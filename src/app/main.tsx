@@ -201,13 +201,32 @@ function App(): React.ReactElement {
         });
 
     if (response.ok && "document" in response) {
-      setDocument(response.document);
+      const syncedCurrentDocument = documentRef.current.localVersion === target.localVersion;
+      setDocument((current) => {
+        if (current.localVersion === target.localVersion) return response.document;
+        const sameDriveTarget = current.fileId === target.fileId || target.fileId === null;
+        return sameDriveTarget
+          ? {
+              ...current,
+              fileId: response.document.fileId,
+              name: response.document.name,
+              modifiedTime: response.document.modifiedTime,
+              folderId: response.document.folderId
+            }
+          : current;
+      });
       setBrowserFolderId(response.document.folderId);
       setRecents(await rememberDocument(response.document));
       setShowEmptyState(false);
-      dirtyRef.current = false;
-      setSaveState("saved");
-      if (source !== "autosave") pushToast({ tone: "success", title: "Saved to Drive" });
+      if (syncedCurrentDocument) {
+        dirtyRef.current = false;
+        setSaveState("saved");
+        if (source !== "autosave") pushToast({ tone: "success", title: "Saved to Drive" });
+      } else {
+        dirtyRef.current = true;
+        setSaveState("dirty");
+        if (source !== "autosave") pushToast({ tone: "success", title: "Saved snapshot", detail: "Newer local edits still need saving." });
+      }
       return;
     }
 
