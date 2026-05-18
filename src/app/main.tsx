@@ -72,6 +72,7 @@ function App(): React.ReactElement {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [browserFolderId, setBrowserFolderId] = useState<string | null>(() => new URLSearchParams(location.search).get("folderId"));
   const [driveIssue, setDriveIssue] = useState<DriveIssue | null>(null);
+  const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const { toasts, pushToast, dismissToast } = useToasts();
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
   const dirtyRef = useRef(false);
@@ -420,6 +421,7 @@ function App(): React.ReactElement {
                 onToggleView={() => setViewMode((current) => current === "split" ? "preview" : current === "preview" ? "editor" : "split")}
                 onSmartHtmlPaste={importPaste}
                 onImageFiles={(files) => void uploadImages(files)}
+                onCursor={(line, column) => setCursor({ line, column })}
               />
             )}
             {viewMode !== "editor" && <PreviewPane markdown={document.markdown} onChange={changeMarkdown} />}
@@ -432,6 +434,7 @@ function App(): React.ReactElement {
         <span>{stats.words} words</span>
         <span>{stats.chars} chars</span>
         <span>{stats.reading} min read</span>
+        <span>Ln {cursor.line}, Col {cursor.column}</span>
         <span className={`save-state ${saveState}`}>{saveState}</span>
       </footer>
       {conflict && (

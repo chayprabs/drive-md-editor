@@ -27,6 +27,7 @@ interface Props {
   onToggleView(): void;
   onSmartHtmlPaste(html: string): void;
   onImageFiles(files: File[]): void;
+  onCursor(line: number, column: number): void;
 }
 
 const wrapCompartment = new Compartment();
@@ -210,6 +211,11 @@ function editorExtensions(getProps: () => Props): Extension[] {
     }),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) getProps().onChange(update.state.doc.toString());
+      if (update.selectionSet || update.docChanged) {
+        const head = update.state.selection.main.head;
+        const line = update.state.doc.lineAt(head);
+        getProps().onCursor(line.number, head - line.from + 1);
+      }
     })
   ];
 }
