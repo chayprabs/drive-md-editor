@@ -6,6 +6,7 @@ type FrontmatterValue = string | boolean | string[] | number | null;
 interface ParsedFrontmatter {
   data: Record<string, FrontmatterValue>;
   content: string;
+  lineOffset: number;
 }
 
 export function readFrontmatter(markdown: string): FrontmatterFields {
@@ -17,6 +18,15 @@ export function readFrontmatter(markdown: string): FrontmatterFields {
     author: stringField(parsed.data.author),
     draft: typeof parsed.data.draft === "boolean" ? parsed.data.draft : false
   };
+}
+
+export function markdownWithoutFrontmatter(markdown: string): string {
+  return parseFrontmatter(markdown).content;
+}
+
+export function markdownContentWithLineOffset(markdown: string): { content: string; lineOffset: number } {
+  const parsed = parseFrontmatter(markdown);
+  return { content: parsed.content, lineOffset: parsed.lineOffset };
 }
 
 export function writeFrontmatter(markdown: string, fields: FrontmatterFields): string {
@@ -33,8 +43,16 @@ export function writeFrontmatter(markdown: string, fields: FrontmatterFields): s
 }
 
 function parseFrontmatter(markdown: string): ParsedFrontmatter {
-  const parsed = matter(markdown);
-  return { data: parsed.data as Record<string, FrontmatterValue>, content: parsed.content };
+  try {
+    const parsed = matter(markdown);
+    return {
+      data: parsed.data as Record<string, FrontmatterValue>,
+      content: parsed.content,
+      lineOffset: markdown.slice(0, markdown.length - parsed.content.length).split("\n").length - 1
+    };
+  } catch {
+    return { data: {}, content: markdown, lineOffset: 0 };
+  }
 }
 
 function compactFrontmatter(data: Record<string, FrontmatterValue | undefined>): Record<string, FrontmatterValue> {

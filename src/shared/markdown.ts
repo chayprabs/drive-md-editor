@@ -8,6 +8,7 @@ import mark from "markdown-it-mark";
 import sub from "markdown-it-sub";
 import sup from "markdown-it-sup";
 import taskLists from "markdown-it-task-lists";
+import { markdownContentWithLineOffset, markdownWithoutFrontmatter } from "./frontmatter";
 import type { OutlineItem } from "./types";
 
 const calloutTypes = ["note", "warning", "tip", "danger"] as const;
@@ -52,7 +53,7 @@ function createMarkdownIt(): MarkdownIt {
 const md = createMarkdownIt();
 
 export function renderMarkdown(markdown: string): string {
-  const rewritten = rewriteDriveImageUrls(markdown);
+  const rewritten = rewriteDriveImageUrls(markdownWithoutFrontmatter(markdown));
   return md.render(rewritten);
 }
 
@@ -74,7 +75,8 @@ function extractDriveFileId(url: string): string | null {
 }
 
 export function extractOutline(markdown: string): OutlineItem[] {
-  return markdown
+  const { content, lineOffset } = markdownContentWithLineOffset(markdown);
+  return content
     .split(/\r?\n/)
     .map((line, index) => {
       const match = /^(#{1,6})\s+(.+?)\s*#*$/.exec(line);
@@ -85,12 +87,12 @@ export function extractOutline(markdown: string): OutlineItem[] {
         .replace(/[^\p{Letter}\p{Number}\s-]/gu, "")
         .trim()
         .replace(/\s+/g, "-");
-      return { id, text, level: match[1].length, line: index + 1 };
+      return { id, text, level: match[1].length, line: lineOffset + index + 1 };
     })
     .filter((item): item is OutlineItem => item !== null);
 }
 
 export function readingTimeMinutes(markdown: string): number {
-  const words = markdown.trim().split(/\s+/).filter(Boolean).length;
+  const words = markdownWithoutFrontmatter(markdown).trim().split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.ceil(words / 220));
 }
