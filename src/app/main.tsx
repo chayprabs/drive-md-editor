@@ -36,7 +36,7 @@ import { extractOutline, readingTimeMinutes, renderMarkdown } from "../shared/ma
 import { loadOfflineQueue, markQueuedSaveAttempt, queueOfflineSave, removeQueuedSave } from "../shared/offline-queue";
 import { loadRecents, rememberDocument, rememberDriveFile } from "../shared/recents";
 import { defaultSettings, saveSettings } from "../shared/settings";
-import type { MarkDriveSettings, OpenDocument, RecentFile, SaveConflict, ViewMode } from "../shared/types";
+import type { MarkDriveSettings, OpenDocument, RecentFile, SaveConflict, ThemeName, ViewMode } from "../shared/types";
 import "./styles.css";
 
 const emptyMarkdown = `---
@@ -368,7 +368,7 @@ function App(): React.ReactElement {
           <button title="Editor only" aria-pressed={viewMode === "editor"} onClick={() => setViewMode("editor")}><Braces size={16} /></button>
           <button title="Preview only" aria-pressed={viewMode === "preview"} onClick={() => setViewMode("preview")}><Eye size={16} /></button>
           <button title="Soft wrap" aria-pressed={settings.softWrap} onClick={() => void updateSettings({ softWrap: !settings.softWrap })}><WrapText size={16} /></button>
-          <button title="Theme" onClick={() => void updateSettings({ theme: settings.theme === "dark" ? "light" : "dark" })}>{settings.theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}</button>
+          <button title={`Theme: ${settings.theme}`} onClick={() => void updateSettings({ theme: nextTheme(settings.theme) })}>{settings.theme === "light" || settings.theme === "solarized" ? <Sun size={16} /> : <Moon size={16} />}</button>
         </div>
         <div className="toolbar-group overflow">
           <button title="Export Markdown" onClick={exportMarkdown}><Download size={16} /></button>
@@ -434,7 +434,7 @@ function App(): React.ReactElement {
                 onCursor={(line, column) => setCursor({ line, column })}
               />
             )}
-            {viewMode !== "editor" && <PreviewPane markdown={document.markdown} onChange={changeMarkdown} />}
+            {viewMode !== "editor" && <PreviewPane markdown={document.markdown} theme={settings.theme} onChange={changeMarkdown} />}
           </div>
         )}
       </section>
@@ -556,6 +556,11 @@ function escapeHtml(value: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function nextTheme(theme: ThemeName): ThemeName {
+  const themes: ThemeName[] = ["dark", "light", "dracula", "nord", "solarized"];
+  return themes[(themes.indexOf(theme) + 1) % themes.length];
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {

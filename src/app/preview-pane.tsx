@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { readFrontmatter } from "../shared/frontmatter";
 import { extractOutline, renderMarkdown } from "../shared/markdown";
+import type { ThemeName } from "../shared/types";
 
 interface Props {
   markdown: string;
+  theme: ThemeName;
   onChange(markdown: string): void;
 }
 
-export function PreviewPane({ markdown, onChange }: Props): React.ReactElement {
+export function PreviewPane({ markdown, theme, onChange }: Props): React.ReactElement {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const html = useMemo(() => renderMarkdown(markdown), [markdown]);
   const printFrontmatter = useMemo(() => readFrontmatter(markdown), [markdown]);
@@ -17,10 +19,10 @@ export function PreviewPane({ markdown, onChange }: Props): React.ReactElement {
     const host = hostRef.current;
     if (!host) return;
     const timer = window.setTimeout(() => {
-      void hydrateMathAndDiagrams(host);
+      void hydrateMathAndDiagrams(host, theme);
     }, 50);
     return () => window.clearTimeout(timer);
-  }, [html]);
+  }, [html, theme]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -63,7 +65,7 @@ export function PreviewPane({ markdown, onChange }: Props): React.ReactElement {
   );
 }
 
-async function hydrateMathAndDiagrams(host: HTMLElement): Promise<void> {
+async function hydrateMathAndDiagrams(host: HTMLElement, theme: ThemeName): Promise<void> {
   await hydrateCode(host);
   const mathNodes = [...host.querySelectorAll<HTMLElement>("code.language-math, code.language-katex")];
   if (mathNodes.length > 0) {
@@ -77,7 +79,7 @@ async function hydrateMathAndDiagrams(host: HTMLElement): Promise<void> {
   const diagramNodes = [...host.querySelectorAll<HTMLElement>("code.language-mermaid")];
   if (diagramNodes.length > 0) {
     const mermaid = await import("mermaid");
-    mermaid.default.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict" });
+    mermaid.default.initialize({ startOnLoad: false, theme: mermaidTheme(theme), securityLevel: "strict" });
     for (const [index, node] of diagramNodes.entries()) {
       const id = `markdrive-mermaid-${index}-${Date.now()}`;
       const source = node.textContent ?? "";
@@ -88,6 +90,12 @@ async function hydrateMathAndDiagrams(host: HTMLElement): Promise<void> {
       node.closest("pre")?.replaceWith(wrapper);
     }
   }
+}
+
+function mermaidTheme(theme: ThemeName): "dark" | "default" | "forest" | "neutral" {
+  if (theme === "light" || theme === "solarized") return "default";
+  if (theme === "nord") return "neutral";
+  return "dark";
 }
 
 async function hydrateCode(host: HTMLElement): Promise<void> {
