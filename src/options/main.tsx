@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { RotateCcw } from "lucide-react";
 import { sendMessage } from "../shared/messages";
 import { defaultSettings } from "../shared/settings";
 import type { AutosaveInterval, MarkDriveSettings, ThemeName } from "../shared/types";
@@ -16,6 +17,11 @@ function Options(): React.ReactElement {
 
   async function update(update: Partial<MarkDriveSettings>): Promise<void> {
     const response = await sendMessage({ type: "settings:update", settings: update });
+    if (response.ok && "settings" in response) setSettings(response.settings);
+  }
+
+  async function reset(): Promise<void> {
+    const response = await sendMessage({ type: "settings:update", settings: defaultSettings });
     if (response.ok && "settings" in response) setSettings(response.settings);
   }
 
@@ -37,6 +43,9 @@ function Options(): React.ReactElement {
       </select></label>
       <label className="checkbox"><input type="checkbox" checked={settings.vimMode} onChange={(event) => void update({ vimMode: event.target.checked })} /> Vim mode</label>
       <label className="checkbox"><input type="checkbox" checked={settings.softWrap} onChange={(event) => void update({ softWrap: event.target.checked })} /> Soft wrap</label>
+      <label className="checkbox"><input type="checkbox" checked={settings.onboardingComplete} onChange={(event) => void update({ onboardingComplete: event.target.checked })} /> Onboarding complete</label>
+      <label>Last Drive folder<input value={settings.lastFolderId ?? ""} onChange={(event) => void update({ lastFolderId: event.target.value.trim() || null })} /></label>
+      <button className="settings-reset" onClick={() => void reset()}><RotateCcw size={14} /> Reset settings</button>
     </main>
   );
 }

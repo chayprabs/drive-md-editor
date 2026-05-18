@@ -623,6 +623,19 @@ button[aria-pressed="true"] {
   padding: 40px 20px;
 }
 
+.settings-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: fit-content;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
 * {
   scrollbar-color: var(--border) transparent;
   scrollbar-width: thin;

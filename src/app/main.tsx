@@ -96,6 +96,10 @@ function App(): React.ReactElement {
         if (!response.settings.onboardingComplete || new URLSearchParams(location.search).get("onboarding") === "1") {
           setShowOnboarding(true);
         }
+        const folderFromUrl = new URLSearchParams(location.search).get("folderId");
+        if (!folderFromUrl && response.settings.lastFolderId) {
+          setBrowserFolderId(response.settings.lastFolderId);
+        }
       }
     });
     void loadRecents().then(setRecents);
@@ -394,7 +398,10 @@ function App(): React.ReactElement {
             setSaveState("saved");
             void rememberDocument(nextDocument).then(setRecents);
           }}
-          onFolder={setBrowserFolderId}
+          onFolder={(folderId) => {
+            setBrowserFolderId(folderId);
+            void updateSettings({ lastFolderId: folderId });
+          }}
           onJump={(line) => editorRef.current?.goToLine(line)}
         />
         {showEmptyState ? (
