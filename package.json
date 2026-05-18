@@ -14,6 +14,7 @@
     "lint:markers": "tsx scripts/assert-no-markers.ts",
     "lint:bundle": "tsx scripts/assert-bundle-size.ts",
     "lint:extension": "tsx scripts/validate-extension.ts",
+    "lint:drive": "tsx scripts/validate-drive-invariants.ts",
     "lint:oauth": "tsx scripts/validate-oauth.ts"
   },
   "dependencies": {
