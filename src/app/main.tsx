@@ -34,7 +34,7 @@ import { Toasts, useToasts } from "./toasts";
 import { ConflictModal } from "./conflict-modal";
 import { sendMessage } from "../shared/messages";
 import { markdownWithoutFrontmatter, readFrontmatter, writeFrontmatter } from "../shared/frontmatter";
-import { extractOutline, readingTimeMinutes, renderMarkdown } from "../shared/markdown";
+import { extractOutline, readingTimeMinutes, renderMarkdown, type CodeHighlighter } from "../shared/markdown";
 import { loadOfflineQueue, markQueuedSaveAttempt, queueOfflineSave, removeQueuedSave } from "../shared/offline-queue";
 import { loadRecents, rememberDocument, rememberDriveFile } from "../shared/recents";
 import { defaultSettings, saveSettings } from "../shared/settings";
@@ -418,9 +418,19 @@ function App(): React.ReactElement {
   }, [document.folderId, pushToast]);
 
   const exportHtml = useCallback(() => {
-    const html = buildSelfContainedHtml(document.name, document.markdown);
-    downloadBlob(`${document.name.replace(/\.md$/i, "")}.html`, "text/html", html);
-  }, [document.markdown, document.name]);
+    void (async () => {
+      try {
+        const [{ default: hljs }, { default: highlightCss }] = await Promise.all([
+          import("./highlight-languages"),
+          import("highlight.js/styles/github-dark.css?inline")
+        ]);
+        const html = buildSelfContainedHtml(document.name, document.markdown, hljs, highlightCss);
+        downloadBlob(`${document.name.replace(/\.md$/i, "")}.html`, "text/html", html);
+      } catch (error) {
+        pushToast({ tone: "danger", title: "HTML export failed", detail: error instanceof Error ? error.message : "Unable to build the export." });
+      }
+    })();
+  }, [document.markdown, document.name, pushToast]);
 
   const exportMarkdown = useCallback(() => {
     downloadBlob(document.name, "text/markdown", document.markdown);
@@ -636,7 +646,7 @@ function downloadBlob(name: string, type: string, text: string): void {
   URL.revokeObjectURL(url);
 }
 
-function buildSelfContainedHtml(name: string, markdown: string): string {
+function buildSelfContainedHtml(name: string, markdown: string, codeHighlighter?: CodeHighlighter, highlightCss = ""): string {
   const frontmatter = readFrontmatter(markdown);
   const outline = extractOutline(markdown);
   const title = frontmatter.title || name.replace(/\.md$/i, "");
@@ -654,6 +664,7 @@ body{margin:0;padding:48px;max-width:860px;font:18px/1.7 Lora,Georgia,serif;colo
 h1,h2,h3,h4,h5,h6{font-family:Geist,Arial,sans-serif;line-height:1.2}
 a{color:#0d9488}.toc{padding:16px 0;border-bottom:1px solid #d1d5db}.toc a{display:block}
 pre{overflow:auto;padding:14px;border:1px solid #d1d5db;border-radius:8px;background:#111827;color:#f9fafb}
+${highlightCss}
 .frontmatter{margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #d1d5db;color:#4b5563}
 @page{margin:0.75in;@bottom-center{content:counter(page)}}
 </style>
@@ -661,7 +672,7 @@ pre{overflow:auto;padding:14px;border:1px solid #d1d5db;border-radius:8px;backgr
 <body>
 <header class="frontmatter"><h1>${escapeHtml(title)}</h1>${frontmatter.date ? `<p>${escapeHtml(frontmatter.date)}</p>` : ""}${frontmatter.author ? `<p>${escapeHtml(frontmatter.author)}</p>` : ""}</header>
 ${toc}
-<article>${renderMarkdown(markdown)}</article>
+<article>${renderMarkdown(markdown, codeHighlighter)}</article>
 </body>
 </html>`;
 }

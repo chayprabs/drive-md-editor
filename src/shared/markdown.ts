@@ -15,13 +15,25 @@ const calloutTypes = ["note", "warning", "tip", "danger"] as const;
 
 const markdownUtils = new MarkdownIt().utils;
 
-function createMarkdownIt(): MarkdownIt {
+export interface CodeHighlighter {
+  getLanguage(language: string): unknown;
+  highlight(code: string, options: { language: string; ignoreIllegals: boolean }): { value: string };
+}
+
+function createMarkdownIt(codeHighlighter?: CodeHighlighter): MarkdownIt {
   const md = new MarkdownIt({
     html: true,
     linkify: true,
     typographer: true,
     highlight(code, lang): string {
       const languageClass = lang ? ` class="language-${markdownUtils.escapeHtml(lang)}"` : "";
+      if (lang && codeHighlighter?.getLanguage(lang)) {
+        try {
+          return `<pre><code${languageClass}>${codeHighlighter.highlight(code, { language: lang, ignoreIllegals: true }).value}</code></pre>`;
+        } catch {
+          return `<pre><code${languageClass}>${markdownUtils.escapeHtml(code)}</code></pre>`;
+        }
+      }
       return `<pre><code${languageClass}>${markdownUtils.escapeHtml(code)}</code></pre>`;
     }
   });
@@ -52,9 +64,9 @@ function createMarkdownIt(): MarkdownIt {
 
 const md = createMarkdownIt();
 
-export function renderMarkdown(markdown: string): string {
+export function renderMarkdown(markdown: string, codeHighlighter?: CodeHighlighter): string {
   const rewritten = rewriteDriveImageUrls(markdownWithoutFrontmatter(markdown));
-  return md.render(rewritten);
+  return (codeHighlighter ? createMarkdownIt(codeHighlighter) : md).render(rewritten);
 }
 
 export function rewriteDriveImageUrls(markdown: string): string {
