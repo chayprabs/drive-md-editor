@@ -30,8 +30,7 @@ chrome.commands.onCommand.addListener((command) => {
   if (command === "open-markdrive") void openEditor(null, null);
 });
 chrome.contextMenus.onClicked.addListener((info) => {
-  const fileId = extractDriveFileId(info.linkUrl ?? info.pageUrl ?? "");
-  void openEditor(fileId, null);
+  void openFromContext(info.linkUrl ?? info.pageUrl ?? "");
 });
 
 chrome.runtime.onMessage.addListener((request: BackgroundRequest, _sender, sendResponse) => {
@@ -112,6 +111,24 @@ async function openEditor(fileId: string | null, folderId: string | null): Promi
   if (fileId) params.set("fileId", fileId);
   if (folderId) params.set("folderId", folderId);
   await chrome.tabs.create({ url: chrome.runtime.getURL(`index.html${params.size ? `?${params.toString()}` : ""}`) });
+}
+
+async function openFromContext(url: string): Promise<void> {
+  const fileId = extractDriveFileId(url);
+  if (fileId) {
+    await openEditor(fileId, null);
+    return;
+  }
+
+  const stored = await chrome.storage.session.get("markdrive.contextTarget");
+  const target = stored["markdrive.contextTarget"] as { fileId?: unknown; folderId?: unknown; capturedAt?: unknown } | undefined;
+  const fresh = typeof target?.capturedAt === "number" && Date.now() - target.capturedAt < 30_000;
+  if (fresh && typeof target?.fileId === "string") {
+    await openEditor(target.fileId, typeof target.folderId === "string" ? target.folderId : null);
+    return;
+  }
+
+  await openEditor(null, null);
 }
 
 function extractDriveFileId(url: string): string | null {
