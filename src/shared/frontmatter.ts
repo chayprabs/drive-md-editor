@@ -1,7 +1,7 @@
 import matter from "gray-matter";
 import type { FrontmatterFields } from "./types";
 
-type FrontmatterValue = string | boolean | string[] | number | null;
+type FrontmatterValue = string | boolean | string[] | number | Date | null;
 
 interface ParsedFrontmatter {
   data: Record<string, FrontmatterValue>;
@@ -62,5 +62,6 @@ function compactFrontmatter(data: Record<string, FrontmatterValue | undefined>):
 function stringField(value: FrontmatterValue | undefined): string {
   if (typeof value === "string") return value;
   if (typeof value === "number") return String(value);
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
   return "";
 }
