@@ -7,6 +7,7 @@ import footnote from "markdown-it-footnote";
 import mark from "markdown-it-mark";
 import sub from "markdown-it-sub";
 import sup from "markdown-it-sup";
+import taskLists from "markdown-it-task-lists";
 import type { OutlineItem } from "./types";
 
 const calloutTypes = ["note", "warning", "tip", "danger"] as const;
@@ -31,7 +32,8 @@ function createMarkdownIt(): MarkdownIt {
     })
     .use(sup)
     .use(sub)
-    .use(mark);
+    .use(mark)
+    .use(taskLists, { enabled: true, label: true, labelAfter: true });
 
   for (const type of calloutTypes) {
     md.use(container, type, {
