@@ -26,7 +26,6 @@
     "@lezer/highlight": "^1.2.1",
     "@replit/codemirror-vim": "^6.2.1",
     "codemirror": "^6.0.1",
-    "gray-matter": "^4.0.3",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.22",
     "lucide-react": "^0.511.0",
