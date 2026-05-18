@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { readFrontmatter } from "../shared/frontmatter";
 import { extractOutline, renderMarkdown } from "../shared/markdown";
 import type { ThemeName } from "../shared/types";
@@ -11,9 +11,15 @@ interface Props {
 
 export function PreviewPane({ markdown, theme, onChange }: Props): React.ReactElement {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const html = useMemo(() => renderMarkdown(markdown), [markdown]);
-  const printFrontmatter = useMemo(() => readFrontmatter(markdown), [markdown]);
-  const printOutline = useMemo(() => extractOutline(markdown), [markdown]);
+  const [previewMarkdown, setPreviewMarkdown] = useState(markdown);
+  const html = useMemo(() => renderMarkdown(previewMarkdown), [previewMarkdown]);
+  const printFrontmatter = useMemo(() => readFrontmatter(previewMarkdown), [previewMarkdown]);
+  const printOutline = useMemo(() => extractOutline(previewMarkdown), [previewMarkdown]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setPreviewMarkdown(markdown), 50);
+    return () => window.clearTimeout(timer);
+  }, [markdown]);
 
   useEffect(() => {
     const host = hostRef.current;
