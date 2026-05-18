@@ -108,7 +108,7 @@ async function hydrateCode(host: HTMLElement): Promise<void> {
   const codeNodes = [...host.querySelectorAll<HTMLElement>("pre code")];
   if (codeNodes.length === 0) return;
   await import("highlight.js/styles/github-dark.css");
-  const hljs = await import("highlight.js/lib/common");
+  const hljs = await import("./highlight-languages");
   for (const node of codeNodes) {
     hljs.default.highlightElement(node);
   }

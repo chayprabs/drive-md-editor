@@ -34,6 +34,13 @@ for (const size of ["16", "32", "48", "128"]) {
 }
 
 const files = await listFiles(dist);
+const highlightChunk = files.find((file) => /[\\/]highlight-languages-[^\\/]+\.js$/.test(file));
+expect(Boolean(highlightChunk), "Highlight language registry chunk must be emitted.");
+if (highlightChunk) {
+  const highlightText = await readFile(highlightChunk, "utf8");
+  const registeredLanguages = new Set([...highlightText.matchAll(/\["([^"]+)",/g)].map((match) => match[1]));
+  expect(registeredLanguages.size >= 100, `Highlight chunk must register at least 100 languages; found ${registeredLanguages.size}.`);
+}
 for (const file of files) {
   expect(!file.endsWith(".map"), `Source map emitted: ${file}`);
   if (/\.(html|css|js|json)$/.test(file)) {
