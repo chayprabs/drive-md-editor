@@ -8,7 +8,7 @@ export const manifest: ManifestV3Export = {
   short_name: "MarkDrive",
   version: "1.0.0",
   description:
-    "Edit, preview, and save .md files directly in Google Drive. Live preview, syntax highlighting, Mermaid, KaTeX, dark mode, seamless Drive sync.",
+    "Edit, preview, and save Markdown files in Google Drive with live preview, syntax highlighting, Mermaid, KaTeX, and sync.",
   icons: {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

@@ -11,7 +11,8 @@
     "generate:icons": "tsx scripts/generate-icons.ts",
     "generate:og": "tsx scripts/generate-og.ts",
     "lint:markers": "tsx scripts/assert-no-markers.ts",
-    "lint:bundle": "tsx scripts/assert-bundle-size.ts"
+    "lint:bundle": "tsx scripts/assert-bundle-size.ts",
+    "lint:extension": "tsx scripts/validate-extension.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.6",
