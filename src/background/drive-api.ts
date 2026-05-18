@@ -1,4 +1,4 @@
-import type { DriveFile, OpenDocument } from "../shared/types";
+import type { DriveFile, DriveFolder, OpenDocument } from "../shared/types";
 
 const apiBase = "https://www.googleapis.com/drive/v3";
 const uploadBase = "https://www.googleapis.com/upload/drive/v3";
@@ -130,6 +130,22 @@ export async function listMarkdownFiles(token: string, folderId: string | null, 
     fields: "files(id,name,mimeType,modifiedTime,parents,webViewLink)"
   });
   const result = await request<{ files: DriveFile[] }>(token, `${apiBase}/files?${params.toString()}`);
+  return result.files;
+}
+
+export async function listFolders(token: string, folderId: string | null): Promise<DriveFolder[]> {
+  const parent = folderId ?? "root";
+  const params = new URLSearchParams({
+    q: [
+      "trashed = false",
+      "mimeType = 'application/vnd.google-apps.folder'",
+      `'${parent.replace(/'/g, "\\'")}' in parents`
+    ].join(" and "),
+    orderBy: "name",
+    pageSize: "50",
+    fields: "files(id,name,parents)"
+  });
+  const result = await request<{ files: DriveFolder[] }>(token, `${apiBase}/files?${params.toString()}`);
   return result.files;
 }
 

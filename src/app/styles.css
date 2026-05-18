@@ -220,12 +220,13 @@ button[aria-pressed="true"] {
 
 .file-row {
   display: grid;
-  grid-template-columns: 1fr 28px;
+  grid-template-columns: minmax(0, 1fr) 28px 28px;
   align-items: center;
   gap: 4px;
 }
 
-.file-row > button:first-child {
+.file-row > button:first-child,
+.folder-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -235,10 +236,45 @@ button[aria-pressed="true"] {
   text-align: left;
 }
 
-.file-row span {
+.file-row span,
+.folder-row span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.browser-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  gap: 6px;
+}
+
+.browser-actions input,
+.rename-input {
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.folder-list {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.folder-row {
+  width: 100%;
+}
+
+.inline-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
 }
 
 .form-panel label,

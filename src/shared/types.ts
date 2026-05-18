@@ -22,6 +22,12 @@ export interface DriveFile {
   webViewLink?: string;
 }
 
+export interface DriveFolder {
+  id: string;
+  name: string;
+  parents?: string[];
+}
+
 export interface RecentFile {
   id: string;
   name: string;

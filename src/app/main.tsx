@@ -67,6 +67,7 @@ function App(): React.ReactElement {
   const [recents, setRecents] = useState<RecentFile[]>([]);
   const [showEmptyState, setShowEmptyState] = useState(() => new URLSearchParams(location.search).get("fileId") === null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [browserFolderId, setBrowserFolderId] = useState<string | null>(() => new URLSearchParams(location.search).get("folderId"));
   const { toasts, pushToast, dismissToast } = useToasts();
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
   const dirtyRef = useRef(false);
@@ -134,6 +135,7 @@ function App(): React.ReactElement {
       folderId: response.file.parents?.[0] ?? null,
       localVersion: Date.now()
     });
+    setBrowserFolderId(response.file.parents?.[0] ?? null);
     setRecents(await rememberDriveFile(response.file));
     setShowEmptyState(false);
     dirtyRef.current = false;
@@ -165,6 +167,7 @@ function App(): React.ReactElement {
 
     if (response.ok && "document" in response) {
       setDocument(response.document);
+      setBrowserFolderId(response.document.folderId);
       setRecents(await rememberDocument(response.document));
       setShowEmptyState(false);
       dirtyRef.current = false;
@@ -295,10 +298,19 @@ function App(): React.ReactElement {
           outline={outline}
           frontmatter={frontmatter}
           query={query}
-          folderId={document.folderId}
+          folderId={browserFolderId}
           onQuery={setQuery}
           onFrontmatter={updateFrontmatter}
           onOpenFile={(fileId) => void openFile(fileId)}
+          onCreateDocument={(nextDocument) => {
+            setDocument(nextDocument);
+            setBrowserFolderId(nextDocument.folderId);
+            setShowEmptyState(false);
+            dirtyRef.current = false;
+            setSaveState("saved");
+            void rememberDocument(nextDocument).then(setRecents);
+          }}
+          onFolder={setBrowserFolderId}
           onJump={(line) => editorRef.current?.goToLine(line)}
         />
         {showEmptyState ? (
