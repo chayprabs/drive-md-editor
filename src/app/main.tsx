@@ -86,7 +86,9 @@ function App(): React.ReactElement {
   const { toasts, pushToast, dismissToast } = useToasts();
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
   const dirtyRef = useRef(false);
+  const documentRef = useRef(document);
   const retryTimerRef = useRef<number | null>(null);
+  documentRef.current = document;
 
   const outline = useMemo(() => extractOutline(document.markdown), [document.markdown]);
   const frontmatter = useMemo(() => readFrontmatter(document.markdown), [document.markdown]);
@@ -251,10 +253,13 @@ function App(): React.ReactElement {
 
       if (response.ok && "document" in response) {
         await removeQueuedSave(item.id);
-        setDocument((current) => current.localVersion === item.document.localVersion ? response.document : current);
+        const syncedCurrentDocument = documentRef.current.localVersion === item.document.localVersion;
+        if (syncedCurrentDocument) {
+          setDocument(response.document);
+          dirtyRef.current = false;
+          setSaveState("saved");
+        }
         setRecents(await rememberDocument(response.document));
-        dirtyRef.current = false;
-        setSaveState("saved");
         pushToast({ tone: "success", title: "Queued save synced", detail: response.document.name });
         continue;
       }
