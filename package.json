@@ -17,6 +17,7 @@
     "lint:drive": "tsx scripts/validate-drive-invariants.ts",
     "lint:markdown": "tsx scripts/validate-markdown-rendering.ts",
     "lint:editor": "tsx scripts/validate-editor-invariants.ts",
+    "lint:ui": "tsx scripts/validate-ui-invariants.ts",
     "lint:oauth": "tsx scripts/validate-oauth.ts"
   },
   "dependencies": {
