@@ -481,6 +481,7 @@ function App(): React.ReactElement {
                 onSave={() => void saveCurrent("manual")}
                 onVimSave={() => void saveCurrent("vim")}
                 onToggleView={() => setViewMode((current) => current === "split" ? "preview" : current === "preview" ? "editor" : "split")}
+                onOpenFind={openFindReplace}
                 onSmartHtmlPaste={importPaste}
                 onImageFiles={(files) => void uploadImages(files)}
                 onCursor={(line, column) => setCursor({ line, column })}

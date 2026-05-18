@@ -28,6 +28,7 @@ interface Props {
   onSave(): void;
   onVimSave(): void;
   onToggleView(): void;
+  onOpenFind(): void;
   onSmartHtmlPaste(html: string): void;
   onImageFiles(files: File[]): void;
   onCursor(line: number, column: number): void;
@@ -199,6 +200,13 @@ function editorExtensions(getProps: () => Props): Extension[] {
         key: "Mod-\\",
         run() {
           getProps().onToggleView();
+          return true;
+        }
+      },
+      {
+        key: "Mod-Shift-f",
+        run() {
+          getProps().onOpenFind();
           return true;
         }
       },
