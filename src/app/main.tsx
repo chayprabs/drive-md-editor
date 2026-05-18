@@ -12,6 +12,7 @@ import {
   FolderOpen,
   Italic,
   Link,
+  MoreHorizontal,
   Moon,
   PanelLeft,
   Save,
@@ -32,7 +33,7 @@ import { Sidebar } from "./sidebar";
 import { Toasts, useToasts } from "./toasts";
 import { ConflictModal } from "./conflict-modal";
 import { sendMessage } from "../shared/messages";
-import { readFrontmatter, writeFrontmatter } from "../shared/frontmatter";
+import { markdownWithoutFrontmatter, readFrontmatter, writeFrontmatter } from "../shared/frontmatter";
 import { extractOutline, readingTimeMinutes, renderMarkdown } from "../shared/markdown";
 import { loadOfflineQueue, markQueuedSaveAttempt, queueOfflineSave, removeQueuedSave } from "../shared/offline-queue";
 import { loadRecents, rememberDocument, rememberDriveFile } from "../shared/recents";
@@ -83,8 +84,10 @@ function App(): React.ReactElement {
     wholeWord: false,
     regex: false
   });
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const { toasts, pushToast, dismissToast } = useToasts();
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
+  const overflowRef = useRef<HTMLDivElement | null>(null);
   const dirtyRef = useRef(false);
   const documentRef = useRef(document);
   const retryTimerRef = useRef<number | null>(null);
@@ -93,7 +96,8 @@ function App(): React.ReactElement {
   const outline = useMemo(() => extractOutline(document.markdown), [document.markdown]);
   const frontmatter = useMemo(() => readFrontmatter(document.markdown), [document.markdown]);
   const stats = useMemo(() => {
-    const words = document.markdown.trim().split(/\s+/).filter(Boolean).length;
+    const content = markdownWithoutFrontmatter(document.markdown);
+    const words = content.trim().split(/\s+/).filter(Boolean).length;
     return {
       words,
       chars: document.markdown.length,
@@ -123,6 +127,22 @@ function App(): React.ReactElement {
   useEffect(() => {
     documentElement().dataset.theme = settings.theme;
   }, [settings.theme]);
+
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const closeOnOutside = (event: MouseEvent) => {
+      if (!overflowRef.current?.contains(event.target as Node)) setOverflowOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOverflowOpen(false);
+    };
+    globalThis.document.addEventListener("mousedown", closeOnOutside);
+    globalThis.document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      globalThis.document.removeEventListener("mousedown", closeOnOutside);
+      globalThis.document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [overflowOpen]);
 
   useEffect(() => {
     const guard = (event: BeforeUnloadEvent) => {
@@ -438,6 +458,25 @@ function App(): React.ReactElement {
           <button title="Export HTML" onClick={exportHtml}><Upload size={16} /></button>
           <button title="Export PDF" onClick={exportPdf}><FileDown size={16} /></button>
           <button title="Options" onClick={() => chrome.runtime.openOptionsPage()}><Settings size={16} /></button>
+        </div>
+        <div className="toolbar-more" ref={overflowRef}>
+          <button
+            title="More actions"
+            aria-label="More actions"
+            aria-haspopup="menu"
+            aria-expanded={overflowOpen}
+            onClick={() => setOverflowOpen((open) => !open)}
+          >
+            <MoreHorizontal size={16} />
+          </button>
+          {overflowOpen ? (
+            <div className="toolbar-menu" role="menu">
+              <button role="menuitem" onClick={() => { setOverflowOpen(false); exportMarkdown(); }}><Download size={14} /> Export Markdown</button>
+              <button role="menuitem" onClick={() => { setOverflowOpen(false); exportHtml(); }}><Upload size={14} /> Export HTML</button>
+              <button role="menuitem" onClick={() => { setOverflowOpen(false); exportPdf(); }}><FileDown size={14} /> Export PDF</button>
+              <button role="menuitem" onClick={() => { setOverflowOpen(false); chrome.runtime.openOptionsPage(); }}><Settings size={14} /> Options</button>
+            </div>
+          ) : null}
         </div>
       </header>
       <div className="findbar-slot">
