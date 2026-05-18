@@ -5,7 +5,7 @@ import { defineConfig, type Plugin } from "vite";
 import { manifest } from "./src/manifest";
 
 export default defineConfig({
-  plugins: [katexWoff2Only(), react(), crx({ manifest })],
+  plugins: [safeGrayMatterEngines(), katexWoff2Only(), react(), crx({ manifest })],
   build: {
     modulePreload: false,
     sourcemap: false,
@@ -28,6 +28,27 @@ export default defineConfig({
     }
   }
 });
+
+function safeGrayMatterEngines(): Plugin {
+  const replacement = resolve(__dirname, "src/shared/gray-matter-engines.ts");
+  return {
+    name: "markdrive-safe-gray-matter-engines",
+    enforce: "pre",
+    resolveId(source, importer) {
+      const normalizedImporter = importer?.replace(/\\/g, "/") ?? "";
+      if (source === "./lib/engines" && normalizedImporter.endsWith("/gray-matter/index.js")) {
+        return replacement;
+      }
+      if (source === "./engines" && normalizedImporter.endsWith("/gray-matter/lib/defaults.js")) {
+        return replacement;
+      }
+      if (source.replace(/\\/g, "/").endsWith("/gray-matter/lib/engines.js")) {
+        return replacement;
+      }
+      return null;
+    }
+  };
+}
 
 function katexWoff2Only(): Plugin {
   return {

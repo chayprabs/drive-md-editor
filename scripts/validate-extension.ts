@@ -46,6 +46,7 @@ for (const file of files) {
   if (/\.(html|css|js|json)$/.test(file)) {
     const text = await readFile(file, "utf8");
     expect(!/https:\/\/fonts\.googleapis\.com|https:\/\/fonts\.gstatic\.com/.test(text), `Remote font URL emitted: ${file}`);
+    expect(!/\beval\s*\(|new Function\s*\(/.test(text), `Unsafe dynamic code evaluation emitted: ${file}`);
   }
 }
 

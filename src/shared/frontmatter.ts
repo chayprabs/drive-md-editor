@@ -1,6 +1,7 @@
+import matter from "gray-matter";
 import type { FrontmatterFields } from "./types";
 
-type FrontmatterValue = string | boolean | string[];
+type FrontmatterValue = string | boolean | string[] | number | null;
 
 interface ParsedFrontmatter {
   data: Record<string, FrontmatterValue>;
@@ -28,82 +29,20 @@ export function writeFrontmatter(markdown: string, fields: FrontmatterFields): s
     author: fields.author || undefined,
     draft: fields.draft
   };
-  return `---\n${stringifyFrontmatter(data)}---\n\n${parsed.content.trimStart()}`.trimEnd() + "\n";
+  return matter.stringify(parsed.content.trimStart(), compactFrontmatter(data)).trimEnd() + "\n";
 }
 
 function parseFrontmatter(markdown: string): ParsedFrontmatter {
-  const lines = markdown.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return { data: {}, content: markdown };
-  const closeIndex = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
-  if (closeIndex === -1) return { data: {}, content: markdown };
-  return {
-    data: parseYamlBlock(lines.slice(1, closeIndex)),
-    content: lines.slice(closeIndex + 1).join("\n")
-  };
+  const parsed = matter(markdown);
+  return { data: parsed.data as Record<string, FrontmatterValue>, content: parsed.content };
 }
 
-function parseYamlBlock(lines: string[]): Record<string, FrontmatterValue> {
-  const data: Record<string, FrontmatterValue> = {};
-  let arrayKey: string | null = null;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    if (arrayKey && trimmed.startsWith("- ")) {
-      const current = data[arrayKey];
-      if (Array.isArray(current)) current.push(parseString(trimmed.slice(2)));
-      continue;
-    }
-
-    arrayKey = null;
-    const match = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
-    if (!match) continue;
-    const [, key, rawValue] = match;
-    if (rawValue === "") {
-      data[key] = [];
-      arrayKey = key;
-      continue;
-    }
-    data[key] = parseValue(rawValue);
-  }
-
-  return data;
-}
-
-function parseValue(rawValue: string): FrontmatterValue {
-  const value = rawValue.trim();
-  if (value === "true") return true;
-  if (value === "false") return false;
-  if (value.startsWith("[") && value.endsWith("]")) {
-    const inner = value.slice(1, -1).trim();
-    if (!inner) return [];
-    return inner.split(",").map((item) => parseString(item.trim())).filter(Boolean);
-  }
-  return parseString(value);
-}
-
-function parseString(value: string): string {
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
-
-function stringifyFrontmatter(data: Record<string, FrontmatterValue | undefined>): string {
-  return Object.entries(data)
-    .filter((entry): entry is [string, FrontmatterValue] => entry[1] !== undefined)
-    .map(([key, value]) => {
-      if (Array.isArray(value)) return value.length > 0 ? `${key}:\n${value.map((item) => `  - ${quoteString(item)}`).join("\n")}\n` : `${key}: []\n`;
-      return `${key}: ${typeof value === "boolean" ? String(value) : quoteString(value)}\n`;
-    })
-    .join("");
-}
-
-function quoteString(value: string): string {
-  if (/^[A-Za-z0-9_./@-]+$/.test(value)) return value;
-  return JSON.stringify(value);
+function compactFrontmatter(data: Record<string, FrontmatterValue | undefined>): Record<string, FrontmatterValue> {
+  return Object.fromEntries(Object.entries(data).filter((entry): entry is [string, FrontmatterValue] => entry[1] !== undefined));
 }
 
 function stringField(value: FrontmatterValue | undefined): string {
-  return typeof value === "string" ? value : "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  return "";
 }
