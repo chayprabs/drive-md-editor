@@ -1,6 +1,4 @@
 import React, { useEffect, useMemo, useRef } from "react";
-import "highlight.js/styles/github-dark.css";
-import "katex/dist/katex.min.css";
 import { renderMarkdown } from "../shared/markdown";
 
 interface Props {
@@ -43,8 +41,10 @@ export function PreviewPane({ markdown, onChange }: Props): React.ReactElement {
 }
 
 async function hydrateMathAndDiagrams(host: HTMLElement): Promise<void> {
+  await hydrateCode(host);
   const mathNodes = [...host.querySelectorAll<HTMLElement>("code.language-math, code.language-katex")];
   if (mathNodes.length > 0) {
+    await import("katex/dist/katex.min.css");
     const katex = await import("katex");
     for (const node of mathNodes) {
       katex.default.render(node.textContent ?? "", node.parentElement ?? node, { throwOnError: false });
@@ -64,5 +64,15 @@ async function hydrateMathAndDiagrams(host: HTMLElement): Promise<void> {
       wrapper.innerHTML = svg;
       node.closest("pre")?.replaceWith(wrapper);
     }
+  }
+}
+
+async function hydrateCode(host: HTMLElement): Promise<void> {
+  const codeNodes = [...host.querySelectorAll<HTMLElement>("pre code")];
+  if (codeNodes.length === 0) return;
+  await import("highlight.js/styles/github-dark.css");
+  const hljs = await import("highlight.js");
+  for (const node of codeNodes) {
+    hljs.default.highlightElement(node);
   }
 }

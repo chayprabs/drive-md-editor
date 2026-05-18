@@ -1,4 +1,3 @@
-import hljs from "highlight.js";
 import MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
 import anchor from "markdown-it-anchor";
@@ -20,10 +19,8 @@ function createMarkdownIt(): MarkdownIt {
     linkify: true,
     typographer: true,
     highlight(code, lang): string {
-      if (lang && hljs.getLanguage(lang)) {
-        return `<pre class="hljs"><code>${hljs.highlight(code, { language: lang, ignoreIllegals: true }).value}</code></pre>`;
-      }
-      return `<pre class="hljs"><code>${markdownUtils.escapeHtml(code)}</code></pre>`;
+      const languageClass = lang ? ` class="language-${markdownUtils.escapeHtml(lang)}"` : "";
+      return `<pre><code${languageClass}>${markdownUtils.escapeHtml(code)}</code></pre>`;
     }
   });
 

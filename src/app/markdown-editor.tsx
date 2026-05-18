@@ -8,7 +8,7 @@ import { searchKeymap, openSearchPanel } from "@codemirror/search";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
 import { classHighlighter } from "@lezer/highlight";
-import { vim } from "@replit/codemirror-vim";
+import { Vim, vim } from "@replit/codemirror-vim";
 
 export interface MarkdownEditorHandle {
   formatSelection(kind: "bold" | "italic" | "link"): void;
@@ -24,17 +24,21 @@ interface Props {
   onChange(markdown: string): void;
   onSave(): void;
   onVimSave(): void;
+  onToggleView(): void;
   onSmartHtmlPaste(html: string): void;
 }
 
 const wrapCompartment = new Compartment();
 const vimCompartment = new Compartment();
+let activeVimSave = (): void => undefined;
+Vim.defineEx("write", "w", () => activeVimSave());
 
 export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(props, ref) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
+  activeVimSave = props.onVimSave;
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -147,6 +151,13 @@ function editorExtensions(getProps: () => Props): Extension[] {
           const selection = view.state.selection.main;
           const selected = view.state.sliceDoc(selection.from, selection.to) || "link";
           view.dispatch({ changes: { from: selection.from, to: selection.to, insert: `[${selected}](https://)` } });
+          return true;
+        }
+      },
+      {
+        key: "Mod-\\",
+        run() {
+          getProps().onToggleView();
           return true;
         }
       },

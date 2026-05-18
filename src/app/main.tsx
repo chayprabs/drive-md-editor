@@ -262,6 +262,7 @@ function App(): React.ReactElement {
               onChange={changeMarkdown}
               onSave={() => void saveCurrent("manual")}
               onVimSave={() => void saveCurrent("vim")}
+              onToggleView={() => setViewMode((current) => current === "split" ? "preview" : current === "preview" ? "editor" : "split")}
               onSmartHtmlPaste={importPaste}
             />
           )}
