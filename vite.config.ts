@@ -30,20 +30,30 @@ export default defineConfig({
 });
 
 function safeGrayMatterEngines(): Plugin {
-  const replacement = resolve(__dirname, "src/shared/gray-matter-engines.ts");
+  const enginesReplacement = resolve(__dirname, "src/shared/gray-matter-engines.ts");
+  const utilsReplacement = resolve(__dirname, "src/shared/gray-matter-utils.ts");
   return {
     name: "markdrive-safe-gray-matter-engines",
     enforce: "pre",
     resolveId(source, importer) {
       const normalizedImporter = importer?.replace(/\\/g, "/") ?? "";
       if (source === "./lib/engines" && normalizedImporter.endsWith("/gray-matter/index.js")) {
-        return replacement;
+        return enginesReplacement;
       }
       if (source === "./engines" && normalizedImporter.endsWith("/gray-matter/lib/defaults.js")) {
-        return replacement;
+        return enginesReplacement;
       }
       if (source.replace(/\\/g, "/").endsWith("/gray-matter/lib/engines.js")) {
-        return replacement;
+        return enginesReplacement;
+      }
+      if (source === "./utils" && normalizedImporter.includes("/gray-matter/lib/")) {
+        return utilsReplacement;
+      }
+      if (source === "./lib/utils" && normalizedImporter.endsWith("/gray-matter/index.js")) {
+        return utilsReplacement;
+      }
+      if (source.replace(/\\/g, "/").endsWith("/gray-matter/lib/utils.js")) {
+        return utilsReplacement;
       }
       return null;
     }
