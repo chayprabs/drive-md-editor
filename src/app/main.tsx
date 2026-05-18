@@ -22,6 +22,7 @@ import {
   WrapText
 } from "lucide-react";
 import TurndownService from "turndown";
+import { DriveIssueModal, type DriveIssue } from "./drive-issue-modal";
 import { EmptyState } from "./empty-state";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./markdown-editor";
 import { Onboarding } from "./onboarding";
@@ -32,6 +33,7 @@ import { ConflictModal } from "./conflict-modal";
 import { sendMessage } from "../shared/messages";
 import { readFrontmatter, writeFrontmatter } from "../shared/frontmatter";
 import { extractOutline, readingTimeMinutes, renderMarkdown } from "../shared/markdown";
+import { loadOfflineQueue, markQueuedSaveAttempt, queueOfflineSave, removeQueuedSave } from "../shared/offline-queue";
 import { loadRecents, rememberDocument, rememberDriveFile } from "../shared/recents";
 import { defaultSettings, saveSettings } from "../shared/settings";
 import type { MarkDriveSettings, OpenDocument, RecentFile, SaveConflict, ViewMode } from "../shared/types";
@@ -69,9 +71,11 @@ function App(): React.ReactElement {
   const [showEmptyState, setShowEmptyState] = useState(() => new URLSearchParams(location.search).get("fileId") === null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [browserFolderId, setBrowserFolderId] = useState<string | null>(() => new URLSearchParams(location.search).get("folderId"));
+  const [driveIssue, setDriveIssue] = useState<DriveIssue | null>(null);
   const { toasts, pushToast, dismissToast } = useToasts();
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
   const dirtyRef = useRef(false);
+  const retryTimerRef = useRef<number | null>(null);
 
   const outline = useMemo(() => extractOutline(document.markdown), [document.markdown]);
   const frontmatter = useMemo(() => readFrontmatter(document.markdown), [document.markdown]);
@@ -118,6 +122,15 @@ function App(): React.ReactElement {
     return () => window.clearTimeout(timer);
   }, [document.markdown, settings.autosaveInterval]);
 
+  useEffect(() => {
+    const retry = () => {
+      void retryOfflineQueue();
+    };
+    window.addEventListener("online", retry);
+    if (navigator.onLine) retry();
+    return () => window.removeEventListener("online", retry);
+  }, []);
+
   const openFile = useCallback(async (fileId: string) => {
     const response = await sendMessage({ type: "drive:get-file", fileId });
     if (!response.ok) {
@@ -146,7 +159,7 @@ function App(): React.ReactElement {
   const saveCurrent = useCallback(async (source: "manual" | "autosave" | "vim" = "manual") => {
     if (!navigator.onLine) {
       setSaveState("offline");
-      await chrome.storage.local.set({ [`offline.${document.fileId ?? "new"}`]: document });
+      await queueOfflineSave(document);
       pushToast({ tone: "warning", title: "Offline", detail: "Changes are queued locally and will retry when online." });
       return;
     }
@@ -189,8 +202,71 @@ function App(): React.ReactElement {
     }
 
     setSaveState("error");
-    if (!response.ok) pushToast({ tone: "danger", title: "Save failed", detail: describeDriveError(response.status, response.message) });
+    if (!response.ok) {
+      const detail = describeDriveError(response.status, response.message);
+      pushToast({ tone: "danger", title: "Save failed", detail });
+      handleDriveFailure(response.status, detail, response.retryAfterMs);
+    }
   }, [document, pushToast]);
+
+  const retryOfflineQueue = useCallback(async () => {
+    if (!navigator.onLine) return;
+    const queue = await loadOfflineQueue();
+    if (queue.length === 0) return;
+
+    for (const item of queue) {
+      await markQueuedSaveAttempt(item.id);
+      const response = item.document.fileId
+        ? await sendMessage({
+            type: "drive:save-file",
+            fileId: item.document.fileId,
+            markdown: item.document.markdown,
+            previousModifiedTime: item.document.modifiedTime
+          })
+        : await sendMessage({
+            type: "drive:create-file",
+            name: item.document.name,
+            markdown: item.document.markdown,
+            folderId: item.document.folderId
+          });
+
+      if (response.ok && "document" in response) {
+        await removeQueuedSave(item.id);
+        setDocument((current) => current.localVersion === item.document.localVersion ? response.document : current);
+        setRecents(await rememberDocument(response.document));
+        dirtyRef.current = false;
+        setSaveState("saved");
+        pushToast({ tone: "success", title: "Queued save synced", detail: response.document.name });
+        continue;
+      }
+
+      if (!response.ok) {
+        handleDriveFailure(response.status, describeDriveError(response.status, response.message), response.retryAfterMs);
+        break;
+      }
+    }
+  }, [pushToast]);
+
+  const handleDriveFailure = useCallback((status: number | undefined, message: string, retryAfterMs?: number) => {
+    if (status === 401) {
+      setDriveIssue({ kind: "auth", message });
+      return;
+    }
+    if (status === 403) {
+      setDriveIssue({ kind: "permission", message });
+      return;
+    }
+    if (status === 404) {
+      setDriveIssue({ kind: "deleted", message });
+      return;
+    }
+    if (status === 429) {
+      const delay = retryAfterMs ?? 4000;
+      setDriveIssue({ kind: "rate-limit", message, retryAfterMs: delay });
+      if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = window.setTimeout(() => void saveCurrent("manual"), delay);
+    }
+  }, [saveCurrent]);
 
   const changeMarkdown = useCallback((markdown: string) => {
     setDocument((current) => ({ ...current, markdown, localVersion: Date.now() }));
@@ -383,6 +459,23 @@ function App(): React.ReactElement {
           onFinish={() => {
             setShowOnboarding(false);
             void updateSettings({ onboardingComplete: true });
+          }}
+        />
+      )}
+      {driveIssue && (
+        <DriveIssueModal
+          issue={driveIssue}
+          onClose={() => setDriveIssue(null)}
+          onRetry={() => {
+            setDriveIssue(null);
+            void saveCurrent("manual");
+          }}
+          onReauth={() => {
+            setDriveIssue(null);
+            void sendMessage({ type: "auth:get-token", interactive: true }).then((response) => {
+              if (response.ok) void saveCurrent("manual");
+              else pushToast({ tone: "danger", title: "Authentication failed", detail: response.message });
+            });
           }}
         />
       )}
