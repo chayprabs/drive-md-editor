@@ -36,11 +36,13 @@ export function PreviewPane({ markdown, theme, onChange }: Props): React.ReactEl
     const click = (event: MouseEvent) => {
       const input = (event.target as Element | null)?.closest<HTMLInputElement>("input[type='checkbox']");
       if (!input) return;
-      const label = input.closest("li")?.textContent?.trim();
-      if (!label) return;
-      const next = markdown.replace(/^(\s*[-*]\s+\[)( |x)(\]\s+)(.+)$/gim, (line, start: string, checked: string, end: string, text: string) => {
-        if (text.trim() !== label) return line;
-        return `${start}${checked.toLowerCase() === "x" ? " " : "x"}${end}${text}`;
+      const checkboxIndex = [...host.querySelectorAll<HTMLInputElement>("input[type='checkbox']")].indexOf(input);
+      if (checkboxIndex < 0) return;
+      let taskIndex = -1;
+      const next = markdown.replace(/^(\s*[-*+]\s+\[)( |x|X)(\]\s+.+)$/gm, (line, start: string, checked: string, end: string) => {
+        taskIndex += 1;
+        if (taskIndex !== checkboxIndex) return line;
+        return `${start}${checked.toLowerCase() === "x" ? " " : "x"}${end}`;
       });
       onChange(next);
     };
