@@ -14,6 +14,7 @@ import type { BackgroundRequest, BackgroundResponse } from "../shared/messages";
 import { loadSettings, updateSettings } from "../shared/settings";
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
+  await chrome.contextMenus.removeAll();
   chrome.contextMenus.create({
     id: "markdrive-open",
     title: "Open with MarkDrive",
