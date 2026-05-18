@@ -22,6 +22,13 @@ export interface DriveFile {
   webViewLink?: string;
 }
 
+export interface RecentFile {
+  id: string;
+  name: string;
+  modifiedTime: string;
+  openedAt: string;
+}
+
 export interface OpenDocument {
   fileId: string | null;
   name: string;

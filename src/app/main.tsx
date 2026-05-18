@@ -21,7 +21,9 @@ import {
   WrapText
 } from "lucide-react";
 import TurndownService from "turndown";
+import { EmptyState } from "./empty-state";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./markdown-editor";
+import { Onboarding } from "./onboarding";
 import { PreviewPane } from "./preview-pane";
 import { Sidebar } from "./sidebar";
 import { Toasts, useToasts } from "./toasts";
@@ -29,8 +31,9 @@ import { ConflictModal } from "./conflict-modal";
 import { sendMessage } from "../shared/messages";
 import { readFrontmatter, writeFrontmatter } from "../shared/frontmatter";
 import { extractOutline, readingTimeMinutes } from "../shared/markdown";
+import { loadRecents, rememberDocument, rememberDriveFile } from "../shared/recents";
 import { defaultSettings, saveSettings } from "../shared/settings";
-import type { MarkDriveSettings, OpenDocument, SaveConflict, ViewMode } from "../shared/types";
+import type { MarkDriveSettings, OpenDocument, RecentFile, SaveConflict, ViewMode } from "../shared/types";
 import "./styles.css";
 
 const emptyMarkdown = `---
@@ -61,6 +64,9 @@ function App(): React.ReactElement {
   const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved" | "offline" | "error">("idle");
   const [conflict, setConflict] = useState<SaveConflict | null>(null);
   const [query, setQuery] = useState("");
+  const [recents, setRecents] = useState<RecentFile[]>([]);
+  const [showEmptyState, setShowEmptyState] = useState(() => new URLSearchParams(location.search).get("fileId") === null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const { toasts, pushToast, dismissToast } = useToasts();
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
   const dirtyRef = useRef(false);
@@ -78,8 +84,14 @@ function App(): React.ReactElement {
 
   useEffect(() => {
     void sendMessage({ type: "settings:get" }).then((response) => {
-      if (response.ok && "settings" in response) setSettings(response.settings);
+      if (response.ok && "settings" in response) {
+        setSettings(response.settings);
+        if (!response.settings.onboardingComplete || new URLSearchParams(location.search).get("onboarding") === "1") {
+          setShowOnboarding(true);
+        }
+      }
     });
+    void loadRecents().then(setRecents);
     const fileId = new URLSearchParams(location.search).get("fileId");
     if (fileId) void openFile(fileId);
   }, []);
@@ -122,6 +134,8 @@ function App(): React.ReactElement {
       folderId: response.file.parents?.[0] ?? null,
       localVersion: Date.now()
     });
+    setRecents(await rememberDriveFile(response.file));
+    setShowEmptyState(false);
     dirtyRef.current = false;
     setSaveState("idle");
   }, [pushToast]);
@@ -151,6 +165,8 @@ function App(): React.ReactElement {
 
     if (response.ok && "document" in response) {
       setDocument(response.document);
+      setRecents(await rememberDocument(response.document));
+      setShowEmptyState(false);
       dirtyRef.current = false;
       setSaveState("saved");
       if (source !== "autosave") pushToast({ tone: "success", title: "Saved to Drive" });
@@ -191,6 +207,20 @@ function App(): React.ReactElement {
   const command = useCallback((kind: "bold" | "italic" | "link") => {
     editorRef.current?.formatSelection(kind);
   }, []);
+
+  const newDocument = useCallback(() => {
+    setDocument({
+      fileId: null,
+      name: "Untitled.md",
+      markdown: emptyMarkdown,
+      modifiedTime: null,
+      folderId: document.folderId,
+      localVersion: Date.now()
+    });
+    dirtyRef.current = false;
+    setSaveState("idle");
+    setShowEmptyState(false);
+  }, [document.folderId]);
 
   const importPaste = useCallback((html: string) => {
     const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
@@ -233,7 +263,7 @@ function App(): React.ReactElement {
           <span>MarkDrive</span>
         </div>
         <div className="toolbar-group">
-          <button title="New file" onClick={() => setDocument({ ...document, fileId: null, name: "Untitled.md", markdown: emptyMarkdown, modifiedTime: null })}><FilePlus2 size={16} /></button>
+          <button title="New file" onClick={newDocument}><FilePlus2 size={16} /></button>
           <button title="Save" onClick={() => void saveCurrent("manual")}><Save size={16} /></button>
           <button title="Bold" onClick={() => command("bold")}><Bold size={16} /></button>
           <button title="Italic" onClick={() => command("italic")}><Italic size={16} /></button>
@@ -271,23 +301,35 @@ function App(): React.ReactElement {
           onOpenFile={(fileId) => void openFile(fileId)}
           onJump={(line) => editorRef.current?.goToLine(line)}
         />
-        <div className={`panes view-${viewMode}`}>
-          {viewMode !== "preview" && (
-            <MarkdownEditor
-              ref={editorRef}
-              markdown={document.markdown}
-              vimMode={settings.vimMode}
-              softWrap={settings.softWrap}
-              onChange={changeMarkdown}
-              onSave={() => void saveCurrent("manual")}
-              onVimSave={() => void saveCurrent("vim")}
-              onToggleView={() => setViewMode((current) => current === "split" ? "preview" : current === "preview" ? "editor" : "split")}
-              onSmartHtmlPaste={importPaste}
-              onImageFiles={(files) => void uploadImages(files)}
-            />
-          )}
-          {viewMode !== "editor" && <PreviewPane markdown={document.markdown} onChange={changeMarkdown} />}
-        </div>
+        {showEmptyState ? (
+          <EmptyState
+            recents={recents}
+            onNewFile={newDocument}
+            onBrowseDrive={() => {
+              setActiveSidebar("drive");
+              setShowEmptyState(false);
+            }}
+            onOpenRecent={(fileId) => void openFile(fileId)}
+          />
+        ) : (
+          <div className={`panes view-${viewMode}`}>
+            {viewMode !== "preview" && (
+              <MarkdownEditor
+                ref={editorRef}
+                markdown={document.markdown}
+                vimMode={settings.vimMode}
+                softWrap={settings.softWrap}
+                onChange={changeMarkdown}
+                onSave={() => void saveCurrent("manual")}
+                onVimSave={() => void saveCurrent("vim")}
+                onToggleView={() => setViewMode((current) => current === "split" ? "preview" : current === "preview" ? "editor" : "split")}
+                onSmartHtmlPaste={importPaste}
+                onImageFiles={(files) => void uploadImages(files)}
+              />
+            )}
+            {viewMode !== "editor" && <PreviewPane markdown={document.markdown} onChange={changeMarkdown} />}
+          </div>
+        )}
       </section>
 
       <footer className="statusbar">
@@ -314,6 +356,14 @@ function App(): React.ReactElement {
             setDocument({ ...conflict.local, fileId: null, name: conflict.local.name.replace(/\.md$/i, " copy.md") });
             setConflict(null);
             void saveCurrent("manual");
+          }}
+        />
+      )}
+      {showOnboarding && (
+        <Onboarding
+          onFinish={() => {
+            setShowOnboarding(false);
+            void updateSettings({ onboardingComplete: true });
           }}
         />
       )}

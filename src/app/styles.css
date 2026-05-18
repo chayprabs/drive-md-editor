@@ -284,6 +284,104 @@ button[aria-pressed="true"] {
   grid-template-columns: 1fr;
 }
 
+.empty-state {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(260px, 1fr);
+  gap: 28px;
+  align-items: center;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: clamp(20px, 4vw, 56px);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 34%),
+    var(--bg);
+}
+
+.empty-hero {
+  display: grid;
+  gap: 14px;
+  align-content: center;
+}
+
+.empty-hero img {
+  width: 72px;
+  height: 72px;
+}
+
+.empty-hero h1 {
+  margin: 0;
+  font-size: clamp(42px, 8vw, 88px);
+  line-height: 0.95;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.empty-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.recent-panel {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  max-height: min(520px, 80vh);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.recent-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.recent-row {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.recent-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-row time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .editor-host,
 .preview-pane {
   min-width: 0;
@@ -429,6 +527,39 @@ button[aria-pressed="true"] {
   margin-top: 0;
 }
 
+.onboarding {
+  display: grid;
+  gap: 10px;
+}
+
+.onboarding-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--accent);
+  background: var(--bg);
+}
+
+.step-dots {
+  display: flex;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.step-dots span {
+  width: 28px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.step-dots .active {
+  background: var(--accent);
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -473,6 +604,11 @@ button[aria-pressed="true"] {
 
   .workspace {
     grid-template-columns: 40px 1fr;
+  }
+
+  .empty-state {
+    grid-template-columns: 1fr;
+    align-content: start;
   }
 
   .sidebar {
