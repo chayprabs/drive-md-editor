@@ -13,7 +13,8 @@
     "generate:og": "tsx scripts/generate-og.ts",
     "lint:markers": "tsx scripts/assert-no-markers.ts",
     "lint:bundle": "tsx scripts/assert-bundle-size.ts",
-    "lint:extension": "tsx scripts/validate-extension.ts"
+    "lint:extension": "tsx scripts/validate-extension.ts",
+    "lint:oauth": "tsx scripts/validate-oauth.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.1",
