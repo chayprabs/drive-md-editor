@@ -57,11 +57,20 @@ export function renderMarkdown(markdown: string): string {
 }
 
 export function rewriteDriveImageUrls(markdown: string): string {
-  return markdown.replace(
-    /!\[([^\]]*)\]\((https:\/\/drive\.google\.com\/file\/d\/([^/)\s]+)[^)]+)\)/g,
-    (_match, alt: string, _url: string, fileId: string) =>
-      `![${alt}](https://drive.google.com/uc?export=view&id=${fileId})`
-  );
+  return markdown.replace(/!\[([^\]]*)\]\((https:\/\/drive\.google\.com\/[^)\s]+)\)/g, (match, alt: string, url: string) => {
+    const fileId = extractDriveFileId(url);
+    return fileId ? `![${alt}](https://drive.google.com/uc?export=view&id=${fileId})` : match;
+  });
+}
+
+function extractDriveFileId(url: string): string | null {
+  const pathMatch = /\/file\/d\/([^/?#]+)/.exec(url);
+  if (pathMatch) return pathMatch[1];
+  try {
+    return new URL(url).searchParams.get("id");
+  } catch {
+    return null;
+  }
 }
 
 export function extractOutline(markdown: string): OutlineItem[] {
