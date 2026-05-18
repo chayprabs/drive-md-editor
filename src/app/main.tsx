@@ -24,6 +24,7 @@ import {
 import TurndownService from "turndown";
 import { DriveIssueModal, type DriveIssue } from "./drive-issue-modal";
 import { EmptyState } from "./empty-state";
+import { FindReplaceBar, type FindReplaceState } from "./find-replace-bar";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./markdown-editor";
 import { Onboarding } from "./onboarding";
 import { PreviewPane } from "./preview-pane";
@@ -36,6 +37,7 @@ import { extractOutline, readingTimeMinutes, renderMarkdown } from "../shared/ma
 import { loadOfflineQueue, markQueuedSaveAttempt, queueOfflineSave, removeQueuedSave } from "../shared/offline-queue";
 import { loadRecents, rememberDocument, rememberDriveFile } from "../shared/recents";
 import { defaultSettings, saveSettings } from "../shared/settings";
+import { summarizeSearch } from "../shared/search";
 import type { MarkDriveSettings, OpenDocument, RecentFile, SaveConflict, ThemeName, ViewMode } from "../shared/types";
 import "./styles.css";
 
@@ -73,6 +75,14 @@ function App(): React.ReactElement {
   const [browserFolderId, setBrowserFolderId] = useState<string | null>(() => new URLSearchParams(location.search).get("folderId"));
   const [driveIssue, setDriveIssue] = useState<DriveIssue | null>(null);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
+  const [findOpen, setFindOpen] = useState(false);
+  const [findState, setFindState] = useState<FindReplaceState>({
+    query: "",
+    replacement: "",
+    caseSensitive: false,
+    wholeWord: false,
+    regex: false
+  });
   const { toasts, pushToast, dismissToast } = useToasts();
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
   const dirtyRef = useRef(false);
@@ -88,6 +98,7 @@ function App(): React.ReactElement {
       reading: readingTimeMinutes(document.markdown)
     };
   }, [document.markdown]);
+  const findSummary = useMemo(() => summarizeSearch(document.markdown, findState), [document.markdown, findState]);
 
   useEffect(() => {
     void sendMessage({ type: "settings:get" }).then((response) => {
@@ -296,6 +307,34 @@ function App(): React.ReactElement {
     editorRef.current?.formatSelection(kind);
   }, []);
 
+  const openFindReplace = useCallback(() => {
+    if (viewMode === "preview") setViewMode("split");
+    setFindOpen(true);
+  }, [viewMode]);
+
+  const findInEditor = useCallback((direction: "next" | "previous") => {
+    const matches = editorRef.current?.find(findState, direction) ?? 0;
+    if (findState.query && matches === 0) {
+      pushToast({ tone: findSummary.invalid ? "danger" : "warning", title: findSummary.invalid ? "Invalid search pattern" : "No matches" });
+    }
+  }, [findState, findSummary.invalid, pushToast]);
+
+  const replaceCurrent = useCallback(() => {
+    const replaced = editorRef.current?.replaceCurrent(findState, findState.replacement) ?? 0;
+    if (findState.query && replaced === 0 && findSummary.matches === 0) {
+      pushToast({ tone: findSummary.invalid ? "danger" : "warning", title: findSummary.invalid ? "Invalid search pattern" : "No matches" });
+    }
+  }, [findState, findSummary.invalid, findSummary.matches, pushToast]);
+
+  const replaceAllInEditor = useCallback(() => {
+    const replaced = editorRef.current?.replaceAll(findState, findState.replacement) ?? 0;
+    pushToast({
+      tone: replaced > 0 ? "success" : "warning",
+      title: replaced > 0 ? "Replaced matches" : "No matches",
+      detail: replaced > 0 ? `${replaced} replacements made.` : undefined
+    });
+  }, [findState, pushToast]);
+
   const newDocument = useCallback(() => {
     setDocument({
       fileId: null,
@@ -361,7 +400,7 @@ function App(): React.ReactElement {
           <button title="Bold" onClick={() => command("bold")}><Bold size={16} /></button>
           <button title="Italic" onClick={() => command("italic")}><Italic size={16} /></button>
           <button title="Link" onClick={() => command("link")}><Link size={16} /></button>
-          <button title="Find and replace" onClick={() => editorRef.current?.openSearch()}><Search size={16} /></button>
+          <button title="Find and replace" aria-pressed={findOpen} onClick={openFindReplace}><Search size={16} /></button>
         </div>
         <div className="toolbar-group">
           <button title="Split view" aria-pressed={viewMode === "split"} onClick={() => setViewMode("split")}><Columns2 size={16} /></button>
@@ -377,6 +416,19 @@ function App(): React.ReactElement {
           <button title="Options" onClick={() => chrome.runtime.openOptionsPage()}><Settings size={16} /></button>
         </div>
       </header>
+      <div className="findbar-slot">
+        {findOpen ? (
+          <FindReplaceBar
+            state={findState}
+            summary={findSummary}
+            onState={setFindState}
+            onFind={findInEditor}
+            onReplaceCurrent={replaceCurrent}
+            onReplaceAll={replaceAllInEditor}
+            onClose={() => setFindOpen(false)}
+          />
+        ) : null}
+      </div>
 
       <section className="workspace">
         <aside className="rail">

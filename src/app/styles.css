@@ -98,7 +98,7 @@ button[aria-pressed="true"] {
 
 .app-shell {
   display: grid;
-  grid-template-rows: 40px 1fr 28px;
+  grid-template-rows: 40px auto 1fr 28px;
   height: 100%;
   min-width: 360px;
 }
@@ -140,6 +140,63 @@ button[aria-pressed="true"] {
   width: 28px;
   height: 28px;
   border-radius: 6px;
+}
+
+.findbar-slot {
+  min-height: 0;
+  background: var(--panel);
+}
+
+.findbar {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) auto auto repeat(5, 28px);
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.findbar input {
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: 0;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.findbar button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.findbar-toggles {
+  display: flex;
+  gap: 4px;
+}
+
+.findbar-toggles button,
+.findbar-text-button {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.find-count {
+  min-width: 72px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.find-count.invalid {
+  color: var(--danger);
 }
 
 .workspace {
@@ -684,6 +741,16 @@ button[aria-pressed="true"] {
   }
 
   .sidebar {
+    display: none;
+  }
+
+  .findbar {
+    grid-template-columns: minmax(0, 1fr) repeat(5, 28px);
+  }
+
+  .findbar input[aria-label="Replace"],
+  .findbar-toggles,
+  .find-count {
     display: none;
   }
 

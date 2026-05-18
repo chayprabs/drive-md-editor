@@ -8,11 +8,15 @@ import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
 import { classHighlighter } from "@lezer/highlight";
 import { Vim, vim } from "@replit/codemirror-vim";
+import { collectSearchMatches, createSearchPattern, replaceMatches, type SearchOptions } from "../shared/search";
 
 export interface MarkdownEditorHandle {
   formatSelection(kind: "bold" | "italic" | "link"): void;
   insertText(text: string): void;
   openSearch(): void;
+  find(options: SearchOptions, direction: "next" | "previous"): number;
+  replaceCurrent(options: SearchOptions, replacement: string): number;
+  replaceAll(options: SearchOptions, replacement: string): number;
   goToLine(line: number): void;
 }
 
@@ -97,6 +101,42 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
     openSearch() {
       const view = viewRef.current;
       if (view) openSearchPanel(view);
+    },
+    find(options, direction) {
+      const view = viewRef.current;
+      if (!view) return 0;
+      return selectSearchMatch(view, options, direction);
+    },
+    replaceCurrent(options, replacement) {
+      const view = viewRef.current;
+      if (!view) return 0;
+      const pattern = createSearchPattern(options);
+      if (!pattern) return 0;
+      const selection = view.state.selection.main;
+      const selected = view.state.sliceDoc(selection.from, selection.to);
+      const selectedMatches = collectSearchMatches(selected, options);
+      if (selectedMatches.length !== 1 || selectedMatches[0].from !== 0 || selectedMatches[0].to !== selected.length) {
+        selectSearchMatch(view, options, "next");
+        return 0;
+      }
+      pattern.lastIndex = 0;
+      const next = options.regex ? selected.replace(pattern, replacement) : replacement;
+      view.dispatch({
+        changes: { from: selection.from, to: selection.to, insert: next },
+        selection: { anchor: selection.from, head: selection.from + next.length }
+      });
+      view.focus();
+      return 1;
+    },
+    replaceAll(options, replacement) {
+      const view = viewRef.current;
+      if (!view) return 0;
+      const current = view.state.doc.toString();
+      const result = replaceMatches(current, options, replacement);
+      if (result.count === 0) return 0;
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: result.text } });
+      view.focus();
+      return result.count;
     },
     goToLine(line) {
       const view = viewRef.current;
@@ -224,6 +264,30 @@ function format(view: EditorView, marker: string, fallback: string): void {
   const selected = view.state.sliceDoc(selection.from, selection.to) || fallback;
   const insert = `${marker}${selected}${marker}`;
   view.dispatch({ changes: { from: selection.from, to: selection.to, insert } });
+}
+
+function selectSearchMatch(view: EditorView, options: SearchOptions, direction: "next" | "previous"): number {
+  const matches = collectSearchMatches(view.state.doc.toString(), options);
+  if (matches.length === 0) return 0;
+  const selection = view.state.selection.main;
+  const position = direction === "next" ? selection.to : selection.from;
+  const index = direction === "next"
+    ? matches.findIndex((match) => match.from >= position)
+    : findPreviousMatch(matches, position);
+  const target = matches[index === -1 ? direction === "next" ? 0 : matches.length - 1 : index];
+  view.dispatch({
+    selection: { anchor: target.from, head: target.to },
+    effects: EditorView.scrollIntoView(target.from, { y: "center" })
+  });
+  view.focus();
+  return matches.length;
+}
+
+function findPreviousMatch(matches: { to: number }[], position: number): number {
+  for (let index = matches.length - 1; index >= 0; index -= 1) {
+    if (matches[index].to <= position) return index;
+  }
+  return -1;
 }
 
 function viewRefFromEvent(event: Event): EditorView | null {
