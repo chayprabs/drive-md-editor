@@ -154,7 +154,7 @@ export async function uploadImage(
   dataUrl: string,
   folderId: string | null
 ): Promise<string> {
-  const imagesFolder = folderId ?? "root";
+  const imagesFolder = await ensureImagesFolder(token, folderId);
   const base64 = dataUrl.split(",", 2)[1] ?? "";
   const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
   const metadata = { name, parents: [imagesFolder] };
@@ -167,4 +167,30 @@ export async function uploadImage(
     { method: "POST", body: form }
   );
   return `![${created.name}](https://drive.google.com/uc?export=view&id=${created.id})`;
+}
+
+async function ensureImagesFolder(token: string, parentFolderId: string | null): Promise<string> {
+  const parent = parentFolderId ?? "root";
+  const params = new URLSearchParams({
+    q: [
+      "trashed = false",
+      "mimeType = 'application/vnd.google-apps.folder'",
+      "name = 'MarkDrive Images'",
+      `'${parent.replace(/'/g, "\\'")}' in parents`
+    ].join(" and "),
+    fields: "files(id,name)",
+    pageSize: "1"
+  });
+  const existing = await request<{ files: DriveFile[] }>(token, `${apiBase}/files?${params.toString()}`);
+  if (existing.files[0]) return existing.files[0].id;
+
+  const created = await request<DriveFile>(token, `${apiBase}/files?fields=${encodeURIComponent("id,name")}`, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "MarkDrive Images",
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [parent]
+    })
+  });
+  return created.id;
 }

@@ -197,6 +197,25 @@ function App(): React.ReactElement {
     editorRef.current?.insertText(turndown.turndown(html));
   }, []);
 
+  const uploadImages = useCallback(async (files: File[]) => {
+    for (const file of files) {
+      const dataUrl = await readFileAsDataUrl(file);
+      const response = await sendMessage({
+        type: "drive:upload-image",
+        name: file.name || `markdrive-image-${Date.now()}.png`,
+        mimeType: file.type || "image/png",
+        dataUrl,
+        folderId: document.folderId
+      });
+      if (response.ok && "imageMarkdown" in response) {
+        editorRef.current?.insertText(`\n${response.imageMarkdown}\n`);
+        pushToast({ tone: "success", title: "Image uploaded" });
+      } else if (!response.ok) {
+        pushToast({ tone: "danger", title: "Image upload failed", detail: response.message });
+      }
+    }
+  }, [document.folderId, pushToast]);
+
   const exportHtml = useCallback(() => {
     const html = `<!doctype html><meta charset="utf-8"><title>${document.name}</title><article>${document.markdown}</article>`;
     downloadBlob(`${document.name.replace(/\.md$/i, "")}.html`, "text/html", html);
@@ -264,6 +283,7 @@ function App(): React.ReactElement {
               onVimSave={() => void saveCurrent("vim")}
               onToggleView={() => setViewMode((current) => current === "split" ? "preview" : current === "preview" ? "editor" : "split")}
               onSmartHtmlPaste={importPaste}
+              onImageFiles={(files) => void uploadImages(files)}
             />
           )}
           {viewMode !== "editor" && <PreviewPane markdown={document.markdown} onChange={changeMarkdown} />}
@@ -321,6 +341,15 @@ function downloadBlob(name: string, type: string, text: string): void {
   anchor.download = name;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result)));
+    reader.addEventListener("error", () => reject(reader.error ?? new Error("Image read failed")));
+    reader.readAsDataURL(file);
+  });
 }
 
 createRoot(globalThis.document.getElementById("root")!).render(<App />);

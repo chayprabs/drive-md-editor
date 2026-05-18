@@ -26,6 +26,7 @@ interface Props {
   onVimSave(): void;
   onToggleView(): void;
   onSmartHtmlPaste(html: string): void;
+  onImageFiles(files: File[]): void;
 }
 
 const wrapCompartment = new Compartment();
@@ -177,6 +178,12 @@ function editorExtensions(getProps: () => Props): Extension[] {
     EditorView.domEventHandlers({
       paste(event) {
         const view = viewRefFromEvent(event);
+        const files = [...(event.clipboardData?.files ?? [])].filter((file) => file.type.startsWith("image/"));
+        if (files.length > 0) {
+          event.preventDefault();
+          getProps().onImageFiles(files);
+          return true;
+        }
         const html = event.clipboardData?.getData("text/html") ?? "";
         const text = event.clipboardData?.getData("text/plain") ?? "";
         const selection = view?.state.selection.main;
@@ -192,6 +199,13 @@ function editorExtensions(getProps: () => Props): Extension[] {
           return true;
         }
         return false;
+      },
+      drop(event) {
+        const files = [...(event.dataTransfer?.files ?? [])].filter((file) => file.type.startsWith("image/"));
+        if (files.length === 0) return false;
+        event.preventDefault();
+        getProps().onImageFiles(files);
+        return true;
       }
     }),
     EditorView.updateListener.of((update) => {
