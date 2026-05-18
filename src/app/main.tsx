@@ -7,6 +7,7 @@ import {
   Columns2,
   Download,
   Eye,
+  FileDown,
   FilePlus2,
   FolderOpen,
   Italic,
@@ -30,7 +31,7 @@ import { Toasts, useToasts } from "./toasts";
 import { ConflictModal } from "./conflict-modal";
 import { sendMessage } from "../shared/messages";
 import { readFrontmatter, writeFrontmatter } from "../shared/frontmatter";
-import { extractOutline, readingTimeMinutes } from "../shared/markdown";
+import { extractOutline, readingTimeMinutes, renderMarkdown } from "../shared/markdown";
 import { loadRecents, rememberDocument, rememberDriveFile } from "../shared/recents";
 import { defaultSettings, saveSettings } from "../shared/settings";
 import type { MarkDriveSettings, OpenDocument, RecentFile, SaveConflict, ViewMode } from "../shared/types";
@@ -250,13 +251,18 @@ function App(): React.ReactElement {
   }, [document.folderId, pushToast]);
 
   const exportHtml = useCallback(() => {
-    const html = `<!doctype html><meta charset="utf-8"><title>${document.name}</title><article>${document.markdown}</article>`;
+    const html = buildSelfContainedHtml(document.name, document.markdown);
     downloadBlob(`${document.name.replace(/\.md$/i, "")}.html`, "text/html", html);
   }, [document.markdown, document.name]);
 
   const exportMarkdown = useCallback(() => {
     downloadBlob(document.name, "text/markdown", document.markdown);
   }, [document.markdown, document.name]);
+
+  const exportPdf = useCallback(() => {
+    setViewMode("preview");
+    window.requestAnimationFrame(() => window.print());
+  }, []);
 
   return (
     <main className="app-shell">
@@ -283,6 +289,7 @@ function App(): React.ReactElement {
         <div className="toolbar-group overflow">
           <button title="Export Markdown" onClick={exportMarkdown}><Download size={16} /></button>
           <button title="Export HTML" onClick={exportHtml}><Upload size={16} /></button>
+          <button title="Export PDF" onClick={exportPdf}><FileDown size={16} /></button>
           <button title="Options" onClick={() => chrome.runtime.openOptionsPage()}><Settings size={16} /></button>
         </div>
       </header>
@@ -403,6 +410,44 @@ function downloadBlob(name: string, type: string, text: string): void {
   anchor.download = name;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function buildSelfContainedHtml(name: string, markdown: string): string {
+  const frontmatter = readFrontmatter(markdown);
+  const outline = extractOutline(markdown);
+  const title = frontmatter.title || name.replace(/\.md$/i, "");
+  const toc = outline.length > 0
+    ? `<nav class="toc"><h2>Contents</h2>${outline.map((item) => `<a style="margin-left:${(item.level - 1) * 12}px" href="#${escapeHtml(item.id)}">${escapeHtml(item.text)}</a>`).join("")}</nav>`
+    : "";
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>
+body{margin:0;padding:48px;max-width:860px;font:18px/1.7 Lora,Georgia,serif;color:#111827;background:#fff}
+h1,h2,h3,h4,h5,h6{font-family:Geist,Arial,sans-serif;line-height:1.2}
+a{color:#0d9488}.toc{padding:16px 0;border-bottom:1px solid #d1d5db}.toc a{display:block}
+pre{overflow:auto;padding:14px;border:1px solid #d1d5db;border-radius:8px;background:#111827;color:#f9fafb}
+.frontmatter{margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #d1d5db;color:#4b5563}
+@page{margin:0.75in;@bottom-center{content:counter(page)}}
+</style>
+</head>
+<body>
+<header class="frontmatter"><h1>${escapeHtml(title)}</h1>${frontmatter.date ? `<p>${escapeHtml(frontmatter.date)}</p>` : ""}${frontmatter.author ? `<p>${escapeHtml(frontmatter.author)}</p>` : ""}</header>
+${toc}
+<article>${renderMarkdown(markdown)}</article>
+</body>
+</html>`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {

@@ -466,6 +466,11 @@ button[aria-pressed="true"] {
   border: 1px solid var(--border);
 }
 
+.print-header,
+.print-toc {
+  display: none;
+}
+
 .callout {
   padding: 12px 14px;
   border-left: 4px solid var(--accent);
@@ -692,5 +697,42 @@ button[aria-pressed="true"] {
     color: #111;
     background: #fff;
     font-family: Lora, Georgia, serif;
+  }
+
+  .print-header,
+  .print-toc {
+    display: block;
+    break-after: avoid;
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #cbd5e1;
+  }
+
+  .print-header dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 12px;
+    color: #475569;
+  }
+
+  .print-header dt {
+    font-weight: 700;
+  }
+
+  .print-header dd {
+    margin: 0;
+  }
+
+  .print-toc a {
+    display: block;
+    color: #0f766e;
+    text-decoration: none;
+  }
+
+  @page {
+    margin: 0.75in;
+    @bottom-center {
+      content: counter(page);
+    }
   }
 }

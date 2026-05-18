@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
-import { renderMarkdown } from "../shared/markdown";
+import { readFrontmatter } from "../shared/frontmatter";
+import { extractOutline, renderMarkdown } from "../shared/markdown";
 
 interface Props {
   markdown: string;
@@ -9,6 +10,8 @@ interface Props {
 export function PreviewPane({ markdown, onChange }: Props): React.ReactElement {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const html = useMemo(() => renderMarkdown(markdown), [markdown]);
+  const printFrontmatter = useMemo(() => readFrontmatter(markdown), [markdown]);
+  const printOutline = useMemo(() => extractOutline(markdown), [markdown]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -37,7 +40,27 @@ export function PreviewPane({ markdown, onChange }: Props): React.ReactElement {
     return () => host.removeEventListener("click", click);
   }, [markdown, onChange]);
 
-  return <article className="preview-pane" ref={hostRef} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <article className="preview-pane" ref={hostRef}>
+      <header className="print-header">
+        <h1>{printFrontmatter.title || "Untitled"}</h1>
+        <dl>
+          {printFrontmatter.date ? <><dt>Date</dt><dd>{printFrontmatter.date}</dd></> : null}
+          {printFrontmatter.author ? <><dt>Author</dt><dd>{printFrontmatter.author}</dd></> : null}
+          {printFrontmatter.tags.length > 0 ? <><dt>Tags</dt><dd>{printFrontmatter.tags.join(", ")}</dd></> : null}
+        </dl>
+      </header>
+      {printOutline.length > 0 ? (
+        <nav className="print-toc" aria-label="Table of contents">
+          <h2>Contents</h2>
+          {printOutline.map((item) => (
+            <a key={`${item.line}-${item.id}`} href={`#${item.id}`} style={{ marginLeft: (item.level - 1) * 12 }}>{item.text}</a>
+          ))}
+        </nav>
+      ) : null}
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </article>
+  );
 }
 
 async function hydrateMathAndDiagrams(host: HTMLElement): Promise<void> {
