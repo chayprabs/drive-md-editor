@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="MarkDrive">
+  <rect width="128" height="128" rx="24" fill="#0d1117"/>
+  <path d="M25 86V38h14l25 29 25-29h14v48H88V61L66 86h-4L40 61v25H25Z" fill="#2DD4BF"/>
+  <path d="M64 24v66m0 0 18-18M64 90 46 72" stroke="#2DD4BF" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
