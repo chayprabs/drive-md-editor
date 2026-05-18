@@ -10,7 +10,8 @@
     "preview": "vite preview --host 127.0.0.1",
     "generate:icons": "tsx scripts/generate-icons.ts",
     "generate:og": "tsx scripts/generate-og.ts",
-    "lint:markers": "tsx scripts/assert-no-markers.ts"
+    "lint:markers": "tsx scripts/assert-no-markers.ts",
+    "lint:bundle": "tsx scripts/assert-bundle-size.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.6",

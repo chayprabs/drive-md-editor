@@ -3,7 +3,6 @@ import { basicSetup, EditorView } from "codemirror";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, foldGutter, indentOnInput, syntaxHighlighting } from "@codemirror/language";
-import { languages } from "@codemirror/language-data";
 import { searchKeymap, openSearchPanel } from "@codemirror/search";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
@@ -122,7 +121,7 @@ function editorExtensions(getProps: () => Props): Extension[] {
     bracketMatching(),
     indentOnInput(),
     syntaxHighlighting(classHighlighter),
-    markdown({ base: markdownLanguage, codeLanguages: languages }),
+    markdown({ base: markdownLanguage }),
     wrapCompartment.of(getProps().softWrap ? EditorView.lineWrapping : []),
     vimCompartment.of(getProps().vimMode ? vim() : []),
     keymap.of([

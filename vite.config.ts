@@ -1,14 +1,14 @@
 import { crx } from "@crxjs/vite-plugin";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import { manifest } from "./src/manifest";
 
 export default defineConfig({
-  plugins: [react(), crx({ manifest })],
+  plugins: [katexWoff2Only(), react(), crx({ manifest })],
   build: {
     modulePreload: false,
-    sourcemap: true,
+    sourcemap: false,
     target: "es2022",
     rollupOptions: {
       input: {
@@ -17,6 +17,7 @@ export default defineConfig({
       },
       output: {
         manualChunks(id) {
+          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) return "react";
           if (id.includes("mermaid")) return "mermaid";
           if (id.includes("katex")) return "katex";
           if (id.includes("highlight.js")) return "highlight";
@@ -27,3 +28,16 @@ export default defineConfig({
     }
   }
 });
+
+function katexWoff2Only(): Plugin {
+  return {
+    name: "markdrive-katex-woff2-only",
+    enforce: "pre",
+    transform(code, id) {
+      if (!id.endsWith("katex.min.css")) return null;
+      return code
+        .replace(/,url\(fonts\/KaTeX_[^)]+\.woff\) format\("woff"\)/g, "")
+        .replace(/,url\(fonts\/KaTeX_[^)]+\.ttf\) format\("truetype"\)/g, "");
+    }
+  };
+}
