@@ -122,20 +122,19 @@ export async function listMarkdownFiles(token: string, folderId: string | null, 
   if (folderId) terms.push(`'${folderId.replace(/'/g, "\\'")}' in parents`);
   if (query.trim()) terms.push(`name contains '${query.trim().replace(/'/g, "\\'")}'`);
 
-  const params = new URLSearchParams({
+  const files = await listDriveFiles<DriveFile>(token, new URLSearchParams({
     q: terms.join(" and "),
     spaces: "drive",
     orderBy: "modifiedTime desc",
     pageSize: "50",
-    fields: "files(id,name,mimeType,modifiedTime,parents,webViewLink)"
-  });
-  const result = await request<{ files: DriveFile[] }>(token, `${apiBase}/files?${params.toString()}`);
-  return result.files;
+    fields: "nextPageToken,files(id,name,mimeType,modifiedTime,parents,webViewLink)"
+  }));
+  return files.filter((file) => /\.md$/i.test(file.name));
 }
 
 export async function listFolders(token: string, folderId: string | null): Promise<DriveFolder[]> {
   const parent = folderId ?? "root";
-  const params = new URLSearchParams({
+  return listDriveFiles<DriveFolder>(token, new URLSearchParams({
     q: [
       "trashed = false",
       "mimeType = 'application/vnd.google-apps.folder'",
@@ -143,10 +142,8 @@ export async function listFolders(token: string, folderId: string | null): Promi
     ].join(" and "),
     orderBy: "name",
     pageSize: "50",
-    fields: "files(id,name,parents)"
-  });
-  const result = await request<{ files: DriveFolder[] }>(token, `${apiBase}/files?${params.toString()}`);
-  return result.files;
+    fields: "nextPageToken,files(id,name,parents)"
+  }));
 }
 
 export async function getFolderPath(token: string, folderId: string | null): Promise<DriveFolderPathItem[]> {
@@ -229,4 +226,17 @@ async function ensureImagesFolder(token: string, parentFolderId: string | null):
     })
   });
   return created.id;
+}
+
+async function listDriveFiles<T>(token: string, params: URLSearchParams): Promise<T[]> {
+  const files: T[] = [];
+  let pageToken: string | undefined;
+  do {
+    if (pageToken) params.set("pageToken", pageToken);
+    else params.delete("pageToken");
+    const result = await request<{ files: T[]; nextPageToken?: string }>(token, `${apiBase}/files?${params.toString()}`);
+    files.push(...result.files);
+    pageToken = result.nextPageToken;
+  } while (pageToken);
+  return files;
 }
