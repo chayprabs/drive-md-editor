@@ -161,27 +161,30 @@ function App(): React.ReactElement {
     setSaveState("idle");
   }, [pushToast]);
 
-  const saveCurrent = useCallback(async (source: "manual" | "autosave" | "vim" = "manual") => {
+  const saveCurrent = useCallback(async (
+    source: "manual" | "autosave" | "vim" = "manual",
+    target: OpenDocument = document
+  ) => {
     if (!navigator.onLine) {
       setSaveState("offline");
-      await queueOfflineSave(document);
+      await queueOfflineSave(target);
       pushToast({ tone: "warning", title: "Offline", detail: "Changes are queued locally and will retry when online." });
       return;
     }
 
     setSaveState("saving");
-    const response = document.fileId
+    const response = target.fileId
       ? await sendMessage({
           type: "drive:save-file",
-          fileId: document.fileId,
-          markdown: document.markdown,
-          previousModifiedTime: document.modifiedTime
+          fileId: target.fileId,
+          markdown: target.markdown,
+          previousModifiedTime: target.modifiedTime
         })
       : await sendMessage({
           type: "drive:create-file",
-          name: document.name,
-          markdown: document.markdown,
-          folderId: document.folderId
+          name: target.name,
+          markdown: target.markdown,
+          folderId: target.folderId
         });
 
     if (response.ok && "document" in response) {
@@ -198,7 +201,7 @@ function App(): React.ReactElement {
     if (!response.ok && response.status === 409) {
       try {
         const drive = JSON.parse(response.message) as { markdown: string; modifiedTime: string };
-        setConflict({ local: document, drive });
+        setConflict({ local: target, drive });
         setSaveState("error");
         return;
       } catch {
@@ -448,9 +451,10 @@ function App(): React.ReactElement {
         <ConflictModal
           conflict={conflict}
           onKeepMine={() => {
-            setDocument({ ...conflict.local, modifiedTime: conflict.drive.modifiedTime });
+            const local = { ...conflict.local, modifiedTime: conflict.drive.modifiedTime };
+            setDocument(local);
             setConflict(null);
-            void saveCurrent("manual");
+            void saveCurrent("manual", local);
           }}
           onKeepDrive={() => {
             setDocument({ ...conflict.local, markdown: conflict.drive.markdown, modifiedTime: conflict.drive.modifiedTime });
@@ -458,9 +462,10 @@ function App(): React.ReactElement {
             setConflict(null);
           }}
           onSaveCopy={() => {
-            setDocument({ ...conflict.local, fileId: null, name: conflict.local.name.replace(/\.md$/i, " copy.md") });
+            const copy = { ...conflict.local, fileId: null, modifiedTime: null, name: conflict.local.name.replace(/\.md$/i, " copy.md") };
+            setDocument(copy);
             setConflict(null);
-            void saveCurrent("manual");
+            void saveCurrent("manual", copy);
           }}
         />
       )}
