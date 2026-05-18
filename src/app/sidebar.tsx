@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { Check, FileText, Folder, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Check, ChevronRight, FileText, Folder, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { sendMessage } from "../shared/messages";
-import type { DriveFile, DriveFolder, FrontmatterFields, OpenDocument, OutlineItem } from "../shared/types";
+import type { DriveFile, DriveFolder, DriveFolderPathItem, FrontmatterFields, OpenDocument, OutlineItem } from "../shared/types";
 
 interface Props {
   active: "outline" | "drive" | "frontmatter";
@@ -44,6 +44,7 @@ function Outline({ items, onJump }: { items: OutlineItem[]; onJump(line: number)
 function DriveBrowser(props: Props): React.ReactElement {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [folders, setFolders] = useState<DriveFolder[]>([]);
+  const [path, setPath] = useState<DriveFolderPathItem[]>([{ id: null, name: "My Drive" }]);
   const [newName, setNewName] = useState("Untitled.md");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,13 +56,16 @@ function DriveBrowser(props: Props): React.ReactElement {
       setError(null);
       void Promise.all([
         sendMessage({ type: "drive:list-markdown", folderId: props.folderId, query: props.query }),
-        sendMessage({ type: "drive:list-folders", folderId: props.folderId })
-      ]).then(([fileResponse, folderResponse]) => {
+        sendMessage({ type: "drive:list-folders", folderId: props.folderId }),
+        sendMessage({ type: "drive:get-folder-path", folderId: props.folderId })
+      ]).then(([fileResponse, folderResponse, pathResponse]) => {
         setBusy(false);
         if (fileResponse.ok && "files" in fileResponse) setFiles(fileResponse.files);
         else if (!fileResponse.ok) setError(fileResponse.message);
         if (folderResponse.ok && "folders" in folderResponse) setFolders(folderResponse.folders);
         else if (!folderResponse.ok) setError(folderResponse.message);
+        if (pathResponse.ok && "path" in pathResponse) setPath(pathResponse.path);
+        else if (!pathResponse.ok) setError(pathResponse.message);
       });
     }, 150);
     return () => window.clearTimeout(timer);
@@ -95,6 +99,14 @@ function DriveBrowser(props: Props): React.ReactElement {
   return (
     <div className="panel">
       <h2>Drive</h2>
+      <nav className="folder-path" aria-label="Drive folder path">
+        {path.map((item, index) => (
+          <React.Fragment key={`${item.id ?? "root"}-${index}`}>
+            {index > 0 ? <ChevronRight size={12} /> : null}
+            <button onClick={() => props.onFolder(item.id)}>{item.name}</button>
+          </React.Fragment>
+        ))}
+      </nav>
       <div className="browser-actions">
         <input value={newName} onChange={(event) => setNewName(event.target.value)} aria-label="New markdown file name" />
         <button title="Create markdown file" onClick={() => void createFile()}><Plus size={14} /></button>

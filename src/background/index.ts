@@ -1,6 +1,7 @@
 import {
   createMarkdownFile,
   DriveApiError,
+  getFolderPath,
   getMarkdownFile,
   listFolders,
   listMarkdownFiles,
@@ -67,6 +68,9 @@ async function handleMessage(request: BackgroundRequest): Promise<BackgroundResp
     }
     if (request.type === "drive:list-folders") {
       return { ok: true, folders: await listFolders(token, request.folderId) };
+    }
+    if (request.type === "drive:get-folder-path") {
+      return { ok: true, path: await getFolderPath(token, request.folderId) };
     }
     if (request.type === "drive:rename-file") {
       await renameFile(token, request.fileId, request.name);

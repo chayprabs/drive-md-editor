@@ -28,6 +28,11 @@ export interface DriveFolder {
   parents?: string[];
 }
 
+export interface DriveFolderPathItem {
+  id: string | null;
+  name: string;
+}
+
 export interface RecentFile {
   id: string;
   name: string;

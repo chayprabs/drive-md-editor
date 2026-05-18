@@ -1,4 +1,4 @@
-import type { DriveFile, DriveFolder, OpenDocument } from "../shared/types";
+import type { DriveFile, DriveFolder, DriveFolderPathItem, OpenDocument } from "../shared/types";
 
 const apiBase = "https://www.googleapis.com/drive/v3";
 const uploadBase = "https://www.googleapis.com/upload/drive/v3";
@@ -147,6 +147,26 @@ export async function listFolders(token: string, folderId: string | null): Promi
   });
   const result = await request<{ files: DriveFolder[] }>(token, `${apiBase}/files?${params.toString()}`);
   return result.files;
+}
+
+export async function getFolderPath(token: string, folderId: string | null): Promise<DriveFolderPathItem[]> {
+  const path: DriveFolderPathItem[] = [{ id: null, name: "My Drive" }];
+  if (!folderId) return path;
+
+  const folders: DriveFolder[] = [];
+  let currentId: string | undefined = folderId;
+  const seen = new Set<string>();
+  while (currentId && !seen.has(currentId)) {
+    seen.add(currentId);
+    const folder: DriveFolder = await request<DriveFolder>(
+      token,
+      `${apiBase}/files/${currentId}?fields=${encodeURIComponent("id,name,parents")}`
+    );
+    folders.unshift(folder);
+    currentId = folder.parents?.[0];
+  }
+
+  return [...path, ...folders.map((folder) => ({ id: folder.id, name: folder.name }))];
 }
 
 export async function renameFile(token: string, fileId: string, name: string): Promise<void> {

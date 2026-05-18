@@ -267,6 +267,24 @@ button[aria-pressed="true"] {
   border-bottom: 1px solid var(--border);
 }
 
+.folder-path {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.folder-path button {
+  min-width: max-content;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .folder-row {
   width: 100%;
 }
