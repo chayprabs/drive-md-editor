@@ -6,7 +6,13 @@ const maxRecents = 8;
 export async function loadRecents(): Promise<RecentFile[]> {
   const stored = await chrome.storage.local.get(storageKey);
   const value = stored[storageKey];
-  return Array.isArray(value) ? value.filter(isRecentFile).slice(0, maxRecents) : [];
+  if (!Array.isArray(value)) return [];
+
+  const recents = value.map(normalizeRecentFile).filter(isRecentFile).slice(0, maxRecents);
+  if (recents.length !== value.length) {
+    await chrome.storage.local.set({ [storageKey]: recents });
+  }
+  return recents;
 }
 
 export async function rememberDriveFile(file: DriveFile): Promise<RecentFile[]> {
@@ -29,19 +35,40 @@ export async function rememberDocument(document: OpenDocument): Promise<RecentFi
 }
 
 async function rememberRecent(recent: RecentFile): Promise<RecentFile[]> {
+  const normalized = normalizeRecentFile(recent);
+  if (!normalized) return loadRecents();
+
   const current = await loadRecents();
-  const next = [recent, ...current.filter((item) => item.id !== recent.id)].slice(0, maxRecents);
+  const next = [normalized, ...current.filter((item) => item.id !== normalized.id)].slice(0, maxRecents);
   await chrome.storage.local.set({ [storageKey]: next });
   return next;
 }
 
 function isRecentFile(value: unknown): value is RecentFile {
-  if (!value || typeof value !== "object") return false;
+  return value !== null;
+}
+
+function normalizeRecentFile(value: unknown): RecentFile | null {
+  if (!value || typeof value !== "object") return null;
   const item = value as Partial<RecentFile>;
-  return (
-    typeof item.id === "string" &&
-    typeof item.name === "string" &&
-    typeof item.modifiedTime === "string" &&
-    typeof item.openedAt === "string"
-  );
+  const id = typeof item.id === "string" ? item.id.trim() : "";
+  const name = typeof item.name === "string" ? item.name.trim() : "";
+  const modifiedTime = typeof item.modifiedTime === "string" ? item.modifiedTime.trim() : "";
+  const openedAt = typeof item.openedAt === "string" ? item.openedAt.trim() : "";
+  if (
+    id &&
+    name &&
+    modifiedTime &&
+    Number.isFinite(Date.parse(modifiedTime)) &&
+    openedAt &&
+    Number.isFinite(Date.parse(openedAt))
+  ) {
+    return {
+      id,
+      name,
+      modifiedTime,
+      openedAt
+    };
+  }
+  return null;
 }

@@ -40,6 +40,7 @@ import { loadRecents, rememberDocument, rememberDriveFile } from "../shared/rece
 import { defaultSettings, saveSettings } from "../shared/settings";
 import { summarizeSearch } from "../shared/search";
 import type { MarkDriveSettings, OpenDocument, RecentFile, SaveConflict, ThemeName, ViewMode } from "../shared/types";
+import { cleanDriveId } from "../shared/drive-url";
 import "./styles.css";
 
 const emptyMarkdown = `---
@@ -54,6 +55,7 @@ draft: false
 
 Start writing in MarkDrive.
 `;
+const maxImageUploadBytes = 10 * 1024 * 1024;
 
 function App(): React.ReactElement {
   const [settings, setSettings] = useState<MarkDriveSettings>(defaultSettings);
@@ -62,7 +64,7 @@ function App(): React.ReactElement {
     name: "Untitled.md",
     markdown: emptyMarkdown,
     modifiedTime: null,
-    folderId: new URLSearchParams(location.search).get("folderId"),
+    folderId: readQueryParam("folderId"),
     localVersion: Date.now()
   });
   const [viewMode, setViewMode] = useState<ViewMode>("split");
@@ -71,9 +73,9 @@ function App(): React.ReactElement {
   const [conflict, setConflict] = useState<SaveConflict | null>(null);
   const [query, setQuery] = useState("");
   const [recents, setRecents] = useState<RecentFile[]>([]);
-  const [showEmptyState, setShowEmptyState] = useState(() => new URLSearchParams(location.search).get("fileId") === null);
+  const [showEmptyState, setShowEmptyState] = useState(() => readQueryParam("fileId") === null);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [browserFolderId, setBrowserFolderId] = useState<string | null>(() => new URLSearchParams(location.search).get("folderId"));
+  const [browserFolderId, setBrowserFolderId] = useState<string | null>(() => readQueryParam("folderId"));
   const [driveIssue, setDriveIssue] = useState<DriveIssue | null>(null);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const [findOpen, setFindOpen] = useState(false);
@@ -85,12 +87,15 @@ function App(): React.ReactElement {
     regex: false
   });
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [pdfPrintRequest, setPdfPrintRequest] = useState(0);
   const { toasts, pushToast, dismissToast } = useToasts();
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
   const overflowRef = useRef<HTMLDivElement | null>(null);
   const dirtyRef = useRef(false);
   const documentRef = useRef(document);
   const retryTimerRef = useRef<number | null>(null);
+  const printRequestCounterRef = useRef(0);
+  const pendingPrintRequestRef = useRef<number | null>(null);
   documentRef.current = document;
 
   const outline = useMemo(() => extractOutline(document.markdown), [document.markdown]);
@@ -105,24 +110,45 @@ function App(): React.ReactElement {
     };
   }, [document.markdown]);
   const findSummary = useMemo(() => summarizeSearch(document.markdown, findState), [document.markdown, findState]);
+  const safelySetRecents = useCallback(async (load: () => Promise<RecentFile[]>) => {
+    try {
+      setRecents(await load());
+    } catch (failure) {
+      pushToast({ tone: "warning", title: "Recents unavailable", detail: describeUnknownError(failure) });
+    }
+  }, [pushToast]);
+  const safelyQueueOfflineSave = useCallback(async (target: OpenDocument, detail: string): Promise<boolean> => {
+    try {
+      await queueOfflineSave(target);
+      return true;
+    } catch (failure) {
+      setSaveState("error");
+      pushToast({ tone: "danger", title: "Offline queue failed", detail: `${detail} ${describeUnknownError(failure)}` });
+      return false;
+    }
+  }, [pushToast]);
 
   useEffect(() => {
     void sendMessage({ type: "settings:get" }).then((response) => {
       if (response.ok && "settings" in response) {
         setSettings(response.settings);
-        if (!response.settings.onboardingComplete || new URLSearchParams(location.search).get("onboarding") === "1") {
+        if (!response.settings.onboardingComplete || readQueryParam("onboarding") === "1") {
           setShowOnboarding(true);
         }
-        const folderFromUrl = new URLSearchParams(location.search).get("folderId");
+        const folderFromUrl = readQueryParam("folderId");
         if (!folderFromUrl && response.settings.lastFolderId) {
           setBrowserFolderId(response.settings.lastFolderId);
         }
+        return;
       }
+      if (!response.ok) pushToast({ tone: "danger", title: "Settings failed to load", detail: response.message });
+    }).catch((failure: unknown) => {
+      pushToast({ tone: "danger", title: "Settings failed to load", detail: describeUnknownError(failure) });
     });
-    void loadRecents().then(setRecents);
-    const fileId = new URLSearchParams(location.search).get("fileId");
+    void safelySetRecents(loadRecents);
+    const fileId = readQueryParam("fileId");
     if (fileId) void openFile(fileId);
-  }, []);
+  }, [pushToast, safelySetRecents]);
 
   useEffect(() => {
     documentElement().dataset.theme = settings.theme;
@@ -156,7 +182,9 @@ function App(): React.ReactElement {
 
   useEffect(() => {
     if (settings.autosaveInterval === 0 || !dirtyRef.current) return;
-    const timer = window.setTimeout(() => void saveCurrent("autosave"), settings.autosaveInterval);
+    const timer = window.setTimeout(() => {
+      if (dirtyRef.current) void saveCurrent("autosave", documentRef.current);
+    }, settings.autosaveInterval);
     return () => window.clearTimeout(timer);
   }, [document.markdown, settings.autosaveInterval]);
 
@@ -169,10 +197,36 @@ function App(): React.ReactElement {
     return () => window.removeEventListener("online", retry);
   }, []);
 
+  const showDriveIssue = useCallback((status: number | undefined, message: string, retryAfterMs?: number) => {
+    if (status === 401) {
+      setDriveIssue({ kind: "auth", message });
+      return;
+    }
+    if (status === 403) {
+      setDriveIssue({ kind: "permission", message });
+      return;
+    }
+    if (status === 404) {
+      setDriveIssue({ kind: "deleted", message });
+      return;
+    }
+    if (status === 429) {
+      setDriveIssue({ kind: "rate-limit", message, retryAfterMs: retryAfterMs ?? 4000 });
+    }
+  }, []);
+
   const openFile = useCallback(async (fileId: string) => {
-    const response = await sendMessage({ type: "drive:get-file", fileId });
+    let response: Awaited<ReturnType<typeof sendMessage>>;
+    try {
+      response = await sendMessage({ type: "drive:get-file", fileId });
+    } catch (failure) {
+      pushToast({ tone: "danger", title: "Could not open file", detail: describeUnknownError(failure) });
+      return;
+    }
     if (!response.ok) {
-      pushToast({ tone: "danger", title: "Could not open file", detail: response.message });
+      const detail = describeDriveError(response.status, response.message);
+      pushToast({ tone: "danger", title: "Could not open file", detail });
+      showDriveIssue(response.status, detail, response.retryAfterMs);
       return;
     }
     if (!("file" in response)) {
@@ -188,37 +242,51 @@ function App(): React.ReactElement {
       localVersion: Date.now()
     });
     setBrowserFolderId(response.file.parents?.[0] ?? null);
-    setRecents(await rememberDriveFile(response.file));
+    await safelySetRecents(() => rememberDriveFile(response.file));
     setShowEmptyState(false);
     dirtyRef.current = false;
     setSaveState("idle");
-  }, [pushToast]);
+  }, [pushToast, safelySetRecents, showDriveIssue]);
 
   const saveCurrent = useCallback(async (
     source: "manual" | "autosave" | "vim" = "manual",
     target: OpenDocument = document
   ) => {
     if (!navigator.onLine) {
-      setSaveState("offline");
-      await queueOfflineSave(target);
-      pushToast({ tone: "warning", title: "Offline", detail: "Changes are queued locally and will retry when online." });
+      if (await safelyQueueOfflineSave(target, "Changes could not be stored locally.")) {
+        setSaveState("offline");
+        pushToast({ tone: "warning", title: "Offline", detail: "Changes are queued locally and will retry when online." });
+      }
       return;
     }
 
     setSaveState("saving");
-    const response = target.fileId
-      ? await sendMessage({
-          type: "drive:save-file",
-          fileId: target.fileId,
-          markdown: target.markdown,
-          previousModifiedTime: target.modifiedTime
-        })
-      : await sendMessage({
-          type: "drive:create-file",
-          name: target.name,
-          markdown: target.markdown,
-          folderId: target.folderId
+    let response: Awaited<ReturnType<typeof sendMessage>>;
+    try {
+      response = target.fileId
+        ? await sendMessage({
+            type: "drive:save-file",
+            fileId: target.fileId,
+            markdown: target.markdown,
+            previousModifiedTime: target.modifiedTime
+          })
+        : await sendMessage({
+            type: "drive:create-file",
+            name: target.name,
+            markdown: target.markdown,
+            folderId: target.folderId
+          });
+    } catch (failure) {
+      if (await safelyQueueOfflineSave(target, "Runtime save failure could not be stored locally.")) {
+        setSaveState("offline");
+        pushToast({
+          tone: "warning",
+          title: "Save queued locally",
+          detail: `MarkDrive could not reach the extension background. ${describeUnknownError(failure)}`
         });
+      }
+      return;
+    }
 
     if (response.ok && "document" in response) {
       const syncedCurrentDocument = documentRef.current.localVersion === target.localVersion;
@@ -236,7 +304,7 @@ function App(): React.ReactElement {
           : current;
       });
       setBrowserFolderId(response.document.folderId);
-      setRecents(await rememberDocument(response.document));
+      await safelySetRecents(() => rememberDocument(response.document));
       setShowEmptyState(false);
       if (syncedCurrentDocument) {
         dirtyRef.current = false;
@@ -250,15 +318,24 @@ function App(): React.ReactElement {
       return;
     }
 
+    if (!response.ok && (response.status === 0 || !navigator.onLine)) {
+      if (await safelyQueueOfflineSave(target, "Network save failure could not be stored locally.")) {
+        setSaveState("offline");
+        pushToast({ tone: "warning", title: "Offline", detail: "Network failed during save. Changes are queued locally and will retry when online." });
+      }
+      return;
+    }
+
     if (!response.ok && response.status === 409) {
-      try {
-        const drive = JSON.parse(response.message) as { markdown: string; modifiedTime: string };
+      const drive = parseConflictPayload(response.message);
+      if (drive) {
         setConflict({ local: target, drive });
         setSaveState("error");
         return;
-      } catch {
-        setSaveState("error");
       }
+      setSaveState("error");
+      pushToast({ tone: "danger", title: "Save conflict failed", detail: "Drive returned an unreadable conflict response." });
+      return;
     }
 
     setSaveState("error");
@@ -267,48 +344,92 @@ function App(): React.ReactElement {
       pushToast({ tone: "danger", title: "Save failed", detail });
       handleDriveFailure(response.status, detail, response.retryAfterMs);
     }
-  }, [document, pushToast]);
+  }, [document, pushToast, safelyQueueOfflineSave, safelySetRecents]);
 
   const retryOfflineQueue = useCallback(async () => {
     if (!navigator.onLine) return;
-    const queue = await loadOfflineQueue();
+    let queue: Awaited<ReturnType<typeof loadOfflineQueue>>;
+    try {
+      queue = await loadOfflineQueue();
+    } catch (failure) {
+      pushToast({ tone: "warning", title: "Offline queue unavailable", detail: describeUnknownError(failure) });
+      return;
+    }
     if (queue.length === 0) return;
 
     for (const item of queue) {
-      await markQueuedSaveAttempt(item.id);
-      const response = item.document.fileId
-        ? await sendMessage({
-            type: "drive:save-file",
-            fileId: item.document.fileId,
-            markdown: item.document.markdown,
-            previousModifiedTime: item.document.modifiedTime
-          })
-        : await sendMessage({
-            type: "drive:create-file",
-            name: item.document.name,
-            markdown: item.document.markdown,
-            folderId: item.document.folderId
-          });
+      try {
+        await markQueuedSaveAttempt(item.id);
+      } catch (failure) {
+        pushToast({ tone: "warning", title: "Queued save retry failed", detail: describeUnknownError(failure) });
+        break;
+      }
+      let response: Awaited<ReturnType<typeof sendMessage>>;
+      try {
+        response = item.document.fileId
+          ? await sendMessage({
+              type: "drive:save-file",
+              fileId: item.document.fileId,
+              markdown: item.document.markdown,
+              previousModifiedTime: item.document.modifiedTime
+            })
+          : await sendMessage({
+              type: "drive:create-file",
+              name: item.document.name,
+              markdown: item.document.markdown,
+              folderId: item.document.folderId
+            });
+      } catch (failure) {
+        pushToast({ tone: "warning", title: "Queued save retry failed", detail: describeUnknownError(failure) });
+        break;
+      }
 
       if (response.ok && "document" in response) {
-        await removeQueuedSave(item.id);
+        try {
+          await removeQueuedSave(item.id);
+        } catch (failure) {
+          pushToast({ tone: "warning", title: "Queued save synced but not cleared", detail: describeUnknownError(failure) });
+          break;
+        }
         const syncedCurrentDocument = documentRef.current.localVersion === item.document.localVersion;
         if (syncedCurrentDocument) {
           setDocument(response.document);
           dirtyRef.current = false;
           setSaveState("saved");
         }
-        setRecents(await rememberDocument(response.document));
+        await safelySetRecents(() => rememberDocument(response.document));
         pushToast({ tone: "success", title: "Queued save synced", detail: response.document.name });
         continue;
       }
 
       if (!response.ok) {
+        if (response.status === 0 || !navigator.onLine) {
+          pushToast({ tone: "warning", title: "Still offline", detail: "Queued saves remain local and will retry when the network returns." });
+          break;
+        }
+        if (response.status === 409) {
+          const drive = parseConflictPayload(response.message);
+          if (drive) {
+            try {
+              await removeQueuedSave(item.id);
+            } catch (failure) {
+              pushToast({ tone: "warning", title: "Queued conflict saved locally", detail: describeUnknownError(failure) });
+              break;
+            }
+            setConflict({ local: item.document, drive });
+            setSaveState("error");
+            pushToast({ tone: "warning", title: "Queued save needs review", detail: item.document.name });
+            break;
+          }
+          setSaveState("error");
+          pushToast({ tone: "danger", title: "Queued save conflict failed", detail: "Drive returned an unreadable conflict response." });
+          break;
+        }
         handleDriveFailure(response.status, describeDriveError(response.status, response.message), response.retryAfterMs);
         break;
       }
     }
-  }, [pushToast]);
+  }, [pushToast, safelySetRecents]);
 
   const handleDriveFailure = useCallback((status: number | undefined, message: string, retryAfterMs?: number) => {
     if (status === 401) {
@@ -342,10 +463,16 @@ function App(): React.ReactElement {
   }, [changeMarkdown, document.markdown]);
 
   const updateSettings = useCallback(async (update: Partial<MarkDriveSettings>) => {
-    const next = { ...settings, ...update };
+    const previous = settings;
+    const next = { ...previous, ...update };
     setSettings(next);
-    await saveSettings(next);
-  }, [settings]);
+    try {
+      await saveSettings(next);
+    } catch (failure) {
+      setSettings(previous);
+      pushToast({ tone: "danger", title: "Settings failed to save", detail: describeUnknownError(failure) });
+    }
+  }, [pushToast, settings]);
 
   const command = useCallback((kind: "bold" | "italic" | "link") => {
     editorRef.current?.formatSelection(kind);
@@ -385,34 +512,46 @@ function App(): React.ReactElement {
       name: "Untitled.md",
       markdown: emptyMarkdown,
       modifiedTime: null,
-      folderId: document.folderId,
+      folderId: browserFolderId,
       localVersion: Date.now()
     });
     dirtyRef.current = false;
     setSaveState("idle");
     setShowEmptyState(false);
-  }, [document.folderId]);
+  }, [browserFolderId]);
 
   const importPaste = useCallback((html: string) => {
-    const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
-    editorRef.current?.insertText(turndown.turndown(html));
-  }, []);
+    try {
+      const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
+      editorRef.current?.insertText(turndown.turndown(html));
+    } catch (failure) {
+      pushToast({ tone: "danger", title: "HTML paste failed", detail: describeUnknownError(failure) });
+    }
+  }, [pushToast]);
 
   const uploadImages = useCallback(async (files: File[]) => {
     for (const file of files) {
-      const dataUrl = await readFileAsDataUrl(file);
-      const response = await sendMessage({
-        type: "drive:upload-image",
-        name: file.name || `markdrive-image-${Date.now()}.png`,
-        mimeType: file.type || "image/png",
-        dataUrl,
-        folderId: document.folderId
-      });
-      if (response.ok && "imageMarkdown" in response) {
-        editorRef.current?.insertText(`\n${response.imageMarkdown}\n`);
-        pushToast({ tone: "success", title: "Image uploaded" });
-      } else if (!response.ok) {
-        pushToast({ tone: "danger", title: "Image upload failed", detail: response.message });
+      try {
+        if (file.size > maxImageUploadBytes) {
+          pushToast({ tone: "danger", title: "Image upload failed", detail: "Images must be 10 MB or smaller." });
+          continue;
+        }
+        const dataUrl = await readFileAsDataUrl(file);
+        const response = await sendMessage({
+          type: "drive:upload-image",
+          name: file.name || `markdrive-image-${Date.now()}.png`,
+          mimeType: file.type || "image/png",
+          dataUrl,
+          folderId: document.folderId
+        });
+        if (response.ok && "imageMarkdown" in response) {
+          editorRef.current?.insertText(`\n${response.imageMarkdown}\n`);
+          pushToast({ tone: "success", title: "Image uploaded" });
+        } else if (!response.ok) {
+          pushToast({ tone: "danger", title: "Image upload failed", detail: response.message });
+        }
+      } catch (failure) {
+        pushToast({ tone: "danger", title: "Image upload failed", detail: describeUnknownError(failure) });
       }
     }
   }, [document.folderId, pushToast]);
@@ -433,13 +572,96 @@ function App(): React.ReactElement {
   }, [document.markdown, document.name, pushToast]);
 
   const exportMarkdown = useCallback(() => {
-    downloadBlob(document.name, "text/markdown", document.markdown);
-  }, [document.markdown, document.name]);
+    try {
+      downloadBlob(document.name, "text/markdown", document.markdown);
+    } catch (failure) {
+      pushToast({ tone: "danger", title: "Markdown export failed", detail: describeUnknownError(failure) });
+    }
+  }, [document.markdown, document.name, pushToast]);
 
   const exportPdf = useCallback(() => {
-    setViewMode("preview");
-    window.requestAnimationFrame(() => window.print());
+    try {
+      const requestId = printRequestCounterRef.current + 1;
+      printRequestCounterRef.current = requestId;
+      pendingPrintRequestRef.current = requestId;
+      setViewMode("preview");
+      setPdfPrintRequest(requestId);
+    } catch (failure) {
+      pendingPrintRequestRef.current = null;
+      pushToast({ tone: "danger", title: "PDF export failed", detail: describeUnknownError(failure) });
+    }
+  }, [pushToast]);
+
+  const handlePdfPrintReady = useCallback((requestId: number) => {
+    if (pendingPrintRequestRef.current !== requestId) return;
+    pendingPrintRequestRef.current = null;
+    window.requestAnimationFrame(() => {
+      try {
+        window.print();
+      } catch (failure) {
+        pushToast({ tone: "danger", title: "PDF export failed", detail: describeUnknownError(failure) });
+      }
+    });
+  }, [pushToast]);
+
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
   }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    void (async () => {
+      try {
+        if (!globalThis.document.fullscreenElement) await globalThis.document.documentElement.requestFullscreen();
+        else await globalThis.document.exitFullscreen();
+      } catch (failure) {
+        pushToast({ tone: "danger", title: "Fullscreen failed", detail: describeUnknownError(failure) });
+      }
+    })();
+  }, [pushToast]);
+
+  const openOptionsPage = useCallback(() => {
+    try {
+      const openRequest = chrome.runtime.openOptionsPage();
+      void Promise.resolve(openRequest).catch((failure: unknown) => {
+        pushToast({ tone: "danger", title: "Options failed to open", detail: describeUnknownError(failure) });
+      });
+    } catch (failure) {
+      pushToast({ tone: "danger", title: "Options failed to open", detail: describeUnknownError(failure) });
+    }
+  }, [pushToast]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if ((event.target as Element | null)?.closest(".cm-editor")) return;
+      const mod = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      if (mod && key === "s") {
+        event.preventDefault();
+        void saveCurrent("manual");
+        return;
+      }
+      if (mod && event.key === "\\") {
+        event.preventDefault();
+        setViewMode((current) => current === "split" ? "preview" : current === "preview" ? "editor" : "split");
+        return;
+      }
+      if (mod && event.shiftKey && key === "f") {
+        event.preventDefault();
+        openFindReplace();
+        return;
+      }
+      if (event.key === "F11") {
+        event.preventDefault();
+        toggleFullscreen();
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [openFindReplace, saveCurrent, toggleFullscreen]);
 
   return (
     <main className="app-shell">
@@ -467,7 +689,7 @@ function App(): React.ReactElement {
           <button title="Export Markdown" onClick={exportMarkdown}><Download size={16} /></button>
           <button title="Export HTML" onClick={exportHtml}><Upload size={16} /></button>
           <button title="Export PDF" onClick={exportPdf}><FileDown size={16} /></button>
-          <button title="Options" onClick={() => chrome.runtime.openOptionsPage()}><Settings size={16} /></button>
+          <button title="Options" onClick={openOptionsPage}><Settings size={16} /></button>
         </div>
         <div className="toolbar-more" ref={overflowRef}>
           <button
@@ -484,7 +706,7 @@ function App(): React.ReactElement {
               <button role="menuitem" onClick={() => { setOverflowOpen(false); exportMarkdown(); }}><Download size={14} /> Export Markdown</button>
               <button role="menuitem" onClick={() => { setOverflowOpen(false); exportHtml(); }}><Upload size={14} /> Export HTML</button>
               <button role="menuitem" onClick={() => { setOverflowOpen(false); exportPdf(); }}><FileDown size={14} /> Export PDF</button>
-              <button role="menuitem" onClick={() => { setOverflowOpen(false); chrome.runtime.openOptionsPage(); }}><Settings size={14} /> Options</button>
+              <button role="menuitem" onClick={() => { setOverflowOpen(false); openOptionsPage(); }}><Settings size={14} /> Options</button>
             </div>
           ) : null}
         </div>
@@ -524,7 +746,7 @@ function App(): React.ReactElement {
             setShowEmptyState(false);
             dirtyRef.current = false;
             setSaveState("saved");
-            void rememberDocument(nextDocument).then(setRecents);
+            void safelySetRecents(() => rememberDocument(nextDocument));
           }}
           onFolder={(folderId) => {
             setBrowserFolderId(folderId);
@@ -555,12 +777,22 @@ function App(): React.ReactElement {
                 onVimSave={() => void saveCurrent("vim")}
                 onToggleView={() => setViewMode((current) => current === "split" ? "preview" : current === "preview" ? "editor" : "split")}
                 onOpenFind={openFindReplace}
+                onFullscreenError={(failure) => pushToast({ tone: "danger", title: "Fullscreen failed", detail: describeUnknownError(failure) })}
                 onSmartHtmlPaste={importPaste}
                 onImageFiles={(files) => void uploadImages(files)}
                 onCursor={(line, column) => setCursor({ line, column })}
               />
             )}
-            {viewMode !== "editor" && <PreviewPane markdown={document.markdown} theme={settings.theme} onChange={changeMarkdown} />}
+            {viewMode !== "editor" && (
+              <PreviewPane
+                markdown={document.markdown}
+                theme={settings.theme}
+                printRequestId={pdfPrintRequest}
+                onPrintReady={handlePdfPrintReady}
+                onChange={changeMarkdown}
+                onHydrationError={(failure) => pushToast({ tone: "danger", title: "Preview rendering failed", detail: describeUnknownError(failure) })}
+              />
+            )}
           </div>
         )}
       </section>
@@ -585,6 +817,7 @@ function App(): React.ReactElement {
           onKeepDrive={() => {
             setDocument({ ...conflict.local, markdown: conflict.drive.markdown, modifiedTime: conflict.drive.modifiedTime });
             dirtyRef.current = false;
+            setSaveState("saved");
             setConflict(null);
           }}
           onSaveCopy={() => {
@@ -606,8 +839,12 @@ function App(): React.ReactElement {
       {driveIssue && (
         <DriveIssueModal
           issue={driveIssue}
-          onClose={() => setDriveIssue(null)}
+          onClose={() => {
+            clearRetryTimer();
+            setDriveIssue(null);
+          }}
           onRetry={() => {
+            clearRetryTimer();
             setDriveIssue(null);
             void saveCurrent("manual");
           }}
@@ -616,6 +853,8 @@ function App(): React.ReactElement {
             void sendMessage({ type: "auth:get-token", interactive: true }).then((response) => {
               if (response.ok) void saveCurrent("manual");
               else pushToast({ tone: "danger", title: "Authentication failed", detail: response.message });
+            }).catch((failure: unknown) => {
+              pushToast({ tone: "danger", title: "Authentication failed", detail: describeUnknownError(failure) });
             });
           }}
         />
@@ -630,7 +869,23 @@ function describeDriveError(status: number | undefined, message: string): string
   if (status === 403) return "Drive denied write permission for this file.";
   if (status === 404) return "The Drive file was deleted or moved.";
   if (status === 429) return "Drive rate limited the save; MarkDrive will retry after a short backoff.";
+  if (status === 0) return "The network request failed; MarkDrive will keep the save queued locally.";
   return message;
+}
+
+function parseConflictPayload(message: string): { markdown: string; modifiedTime: string } | null {
+  try {
+    const parsed = JSON.parse(message) as { markdown?: unknown; modifiedTime?: unknown };
+    if (typeof parsed.markdown !== "string") return null;
+    if (typeof parsed.modifiedTime !== "string" || !Number.isFinite(Date.parse(parsed.modifiedTime))) return null;
+    return { markdown: parsed.markdown, modifiedTime: parsed.modifiedTime };
+  } catch {
+    return null;
+  }
+}
+
+function describeUnknownError(failure: unknown): string {
+  return failure instanceof Error ? failure.message : "Unexpected MarkDrive error";
 }
 
 function documentElement(): HTMLElement {
@@ -640,10 +895,26 @@ function documentElement(): HTMLElement {
 function downloadBlob(name: string, type: string, text: string): void {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const anchor = globalThis.document.createElement("a");
-  anchor.href = url;
-  anchor.download = name;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  try {
+    anchor.href = url;
+    anchor.download = sanitizeDownloadName(name);
+    anchor.style.display = "none";
+    globalThis.document.body.append(anchor);
+    anchor.click();
+  } finally {
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+}
+
+function sanitizeDownloadName(name: string): string {
+  const cleaned = name.replace(/[\x00-\x1f<>:"/\\|?*]+/g, "-").replace(/\s+/g, " ").trim().replace(/[. ]+$/g, "");
+  if (!cleaned || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(cleaned)) return fallbackDownloadName(name);
+  return cleaned;
+}
+
+function fallbackDownloadName(name: string): string {
+  return /\.html$/i.test(name) ? "MarkDrive-export.html" : "MarkDrive-export.md";
 }
 
 function buildSelfContainedHtml(name: string, markdown: string, codeHighlighter?: CodeHighlighter, highlightCss = ""): string {
@@ -683,6 +954,11 @@ function escapeHtml(value: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function readQueryParam(name: string): string | null {
+  const value = new URLSearchParams(location.search).get(name)?.trim();
+  return cleanDriveId(value);
 }
 
 function nextTheme(theme: ThemeName): ThemeName {

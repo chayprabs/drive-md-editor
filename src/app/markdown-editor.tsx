@@ -29,6 +29,7 @@ interface Props {
   onVimSave(): void;
   onToggleView(): void;
   onOpenFind(): void;
+  onFullscreenError(failure: unknown): void;
   onSmartHtmlPaste(html: string): void;
   onImageFiles(files: File[]): void;
   onCursor(line: number, column: number): void;
@@ -36,27 +37,32 @@ interface Props {
 
 const wrapCompartment = new Compartment();
 const vimCompartment = new Compartment();
-let activeVimSave = (): void => undefined;
-Vim.defineEx("write", "w", () => activeVimSave());
+let activeVimSave: (() => void) | null = null;
+Vim.defineEx("write", "w", () => activeVimSave?.());
 
 export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(props, ref) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const syncingFromPropsRef = useRef(false);
   const propsRef = useRef(props);
   propsRef.current = props;
-  activeVimSave = props.onVimSave;
 
   useEffect(() => {
     if (!hostRef.current) return;
+    const runVimSave = () => propsRef.current.onVimSave();
+    activeVimSave = runVimSave;
     const view = new EditorView({
       parent: hostRef.current,
       state: EditorState.create({
         doc: props.markdown,
-        extensions: editorExtensions(() => propsRef.current)
+        extensions: editorExtensions(() => propsRef.current, () => syncingFromPropsRef.current, () => {
+          activeVimSave = runVimSave;
+        })
       })
     });
     viewRef.current = view;
     return () => {
+      if (activeVimSave === runVimSave) activeVimSave = null;
       view.destroy();
       viewRef.current = null;
     };
@@ -65,9 +71,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
   useEffect(() => {
     const view = viewRef.current;
     if (!view || view.state.doc.toString() === props.markdown) return;
+    syncingFromPropsRef.current = true;
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: props.markdown }
     });
+    syncingFromPropsRef.current = false;
   }, [props.markdown]);
 
   useEffect(() => {
@@ -151,7 +159,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
   return <div className="editor-host" ref={hostRef} />;
 });
 
-function editorExtensions(getProps: () => Props): Extension[] {
+function editorExtensions(getProps: () => Props, isSyncingFromProps: () => boolean, activateVimSave: () => void): Extension[] {
   return [
     basicSetup,
     lineNumbers(),
@@ -213,8 +221,7 @@ function editorExtensions(getProps: () => Props): Extension[] {
       {
         key: "F11",
         run() {
-          if (!document.fullscreenElement) void document.documentElement.requestFullscreen();
-          else void document.exitFullscreen();
+          toggleFullscreen(getProps);
           return true;
         }
       },
@@ -224,6 +231,10 @@ function editorExtensions(getProps: () => Props): Extension[] {
       ...searchKeymap
     ]),
     EditorView.domEventHandlers({
+      focus() {
+        activateVimSave();
+        return false;
+      },
       paste(event) {
         const view = viewRefFromEvent(event);
         const files = [...(event.clipboardData?.files ?? [])].filter((file) => file.type.startsWith("image/"));
@@ -234,11 +245,12 @@ function editorExtensions(getProps: () => Props): Extension[] {
         }
         const html = event.clipboardData?.getData("text/html") ?? "";
         const text = event.clipboardData?.getData("text/plain") ?? "";
+        const pastedUrl = normalizePastedHttpUrl(text);
         const selection = view?.state.selection.main;
-        if (selection && /^https?:\/\//.test(text) && selection.from !== selection.to) {
+        if (selection && pastedUrl && selection.from !== selection.to) {
           event.preventDefault();
           const label = view.state.sliceDoc(selection.from, selection.to);
-          view.dispatch({ changes: { from: selection.from, to: selection.to, insert: `[${label}](${text})` } });
+          view.dispatch({ changes: { from: selection.from, to: selection.to, insert: `[${label}](${pastedUrl})` } });
           return true;
         }
         if (html) {
@@ -257,7 +269,7 @@ function editorExtensions(getProps: () => Props): Extension[] {
       }
     }),
     EditorView.updateListener.of((update) => {
-      if (update.docChanged) getProps().onChange(update.state.doc.toString());
+      if (update.docChanged && !isSyncingFromProps()) getProps().onChange(update.state.doc.toString());
       if (update.selectionSet || update.docChanged) {
         const head = update.state.selection.main.head;
         const line = update.state.doc.lineAt(head);
@@ -272,6 +284,28 @@ function format(view: EditorView, marker: string, fallback: string): void {
   const selected = view.state.sliceDoc(selection.from, selection.to) || fallback;
   const insert = `${marker}${selected}${marker}`;
   view.dispatch({ changes: { from: selection.from, to: selection.to, insert } });
+}
+
+function toggleFullscreen(getProps: () => Props): void {
+  void (async () => {
+    try {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch (failure) {
+      getProps().onFullscreenError(failure);
+    }
+  })();
+}
+
+function normalizePastedHttpUrl(text: string): string | null {
+  const value = text.trim();
+  if (!/^https?:\/\//i.test(value)) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function selectSearchMatch(view: EditorView, options: SearchOptions, direction: "next" | "previous"): number {

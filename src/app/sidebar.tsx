@@ -1,7 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, FileText, Folder, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { normalizeMarkdownFileName } from "../shared/drive-names";
 import { sendMessage } from "../shared/messages";
 import type { DriveFile, DriveFolder, DriveFolderPathItem, FrontmatterFields, OpenDocument, OutlineItem } from "../shared/types";
+
+const unexpectedDriveResponse = "Drive returned an unexpected response.";
 
 interface Props {
   active: "outline" | "drive" | "frontmatter";
@@ -51,9 +54,14 @@ function DriveBrowser(props: Props): React.ReactElement {
   const [expandingFolderId, setExpandingFolderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const loadRequestRef = useRef(0);
+  const actionBusyRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      const requestId = loadRequestRef.current + 1;
+      loadRequestRef.current = requestId;
       setBusy(true);
       setError(null);
       void Promise.all([
@@ -61,41 +69,67 @@ function DriveBrowser(props: Props): React.ReactElement {
         sendMessage({ type: "drive:list-folders", folderId: props.folderId }),
         sendMessage({ type: "drive:get-folder-path", folderId: props.folderId })
       ]).then(([fileResponse, folderResponse, pathResponse]) => {
-        setBusy(false);
+        if (requestId !== loadRequestRef.current) return;
         if (fileResponse.ok && "files" in fileResponse) setFiles(fileResponse.files);
-        else if (!fileResponse.ok) setError(fileResponse.message);
+        else setError(fileResponse.ok ? unexpectedDriveResponse : fileResponse.message);
         if (folderResponse.ok && "folders" in folderResponse) setFolders(folderResponse.folders);
-        else if (!folderResponse.ok) setError(folderResponse.message);
+        else setError(folderResponse.ok ? unexpectedDriveResponse : folderResponse.message);
         if (pathResponse.ok && "path" in pathResponse) setPath(pathResponse.path);
-        else if (!pathResponse.ok) setError(pathResponse.message);
+        else setError(pathResponse.ok ? unexpectedDriveResponse : pathResponse.message);
+      }).catch((failure: unknown) => {
+        if (requestId !== loadRequestRef.current) return;
+        setError(failure instanceof Error ? failure.message : "Drive browser failed to load.");
+      }).finally(() => {
+        if (requestId === loadRequestRef.current) setBusy(false);
       });
     }, 150);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      loadRequestRef.current += 1;
+    };
   }, [props.folderId, props.query]);
 
   async function createFile(): Promise<void> {
-    const response = await sendMessage({
-      type: "drive:create-file",
-      name: newName,
-      markdown: "# Untitled\n",
-      folderId: props.folderId
-    });
-    if (response.ok && "document" in response) {
-      props.onCreateDocument(response.document);
-      setNewName("Untitled.md");
-      return;
+    if (!beginDriveAction()) return;
+    const normalizedName = normalizeMarkdownFileName(newName);
+    try {
+      const response = await sendMessage({
+        type: "drive:create-file",
+        name: normalizedName,
+        markdown: "# Untitled\n",
+        folderId: props.folderId
+      });
+      if (response.ok && "document" in response) {
+        props.onCreateDocument(response.document);
+        setNewName("Untitled.md");
+        setError(null);
+        return;
+      }
+      setError(response.ok ? unexpectedDriveResponse : response.message);
+    } catch (failure) {
+      setError(describeUnknownError(failure));
+    } finally {
+      finishDriveAction();
     }
-    if (!response.ok) setError(response.message);
   }
 
   async function renameFile(fileId: string, name: string): Promise<void> {
-    const response = await sendMessage({ type: "drive:rename-file", fileId, name });
-    if (response.ok) {
-      setFiles((current) => current.map((file) => file.id === fileId ? { ...file, name: name.endsWith(".md") ? name : `${name}.md` } : file));
-      setRenaming(null);
-      return;
+    if (!beginDriveAction()) return;
+    const normalizedName = normalizeMarkdownFileName(name);
+    try {
+      const response = await sendMessage({ type: "drive:rename-file", fileId, name: normalizedName });
+      if (response.ok) {
+        setFiles((current) => current.map((file) => file.id === fileId ? { ...file, name: normalizedName } : file));
+        setRenaming(null);
+        setError(null);
+        return;
+      }
+      setError(response.message);
+    } catch (failure) {
+      setError(describeUnknownError(failure));
+    } finally {
+      finishDriveAction();
     }
-    setError(response.message);
   }
 
   async function toggleFolder(folder: DriveFolder): Promise<void> {
@@ -108,14 +142,51 @@ function DriveBrowser(props: Props): React.ReactElement {
       return;
     }
 
+    if (!beginDriveAction()) return;
     setExpandingFolderId(folder.id);
-    const response = await sendMessage({ type: "drive:list-folders", folderId: folder.id });
-    setExpandingFolderId(null);
-    if (response.ok && "folders" in response) {
-      setExpandedFolders((current) => ({ ...current, [folder.id]: response.folders }));
-      return;
+    try {
+      const response = await sendMessage({ type: "drive:list-folders", folderId: folder.id });
+      if (response.ok && "folders" in response) {
+        setExpandedFolders((current) => ({ ...current, [folder.id]: response.folders }));
+        setError(null);
+        return;
+      }
+      setError(response.ok ? unexpectedDriveResponse : response.message);
+    } catch (failure) {
+      setError(describeUnknownError(failure));
+    } finally {
+      setExpandingFolderId(null);
+      finishDriveAction();
     }
-    if (!response.ok) setError(response.message);
+  }
+
+  async function trashFile(fileId: string): Promise<void> {
+    if (!beginDriveAction()) return;
+    try {
+      const response = await sendMessage({ type: "drive:trash-file", fileId });
+      if (response.ok) {
+        setFiles((current) => current.filter((item) => item.id !== fileId));
+        setError(null);
+        return;
+      }
+      setError(response.message);
+    } catch (failure) {
+      setError(describeUnknownError(failure));
+    } finally {
+      finishDriveAction();
+    }
+  }
+
+  function beginDriveAction(): boolean {
+    if (actionBusyRef.current) return false;
+    actionBusyRef.current = true;
+    setActionBusy(true);
+    return true;
+  }
+
+  function finishDriveAction(): void {
+    actionBusyRef.current = false;
+    setActionBusy(false);
   }
 
   return (
@@ -130,15 +201,15 @@ function DriveBrowser(props: Props): React.ReactElement {
         ))}
       </nav>
       <div className="browser-actions">
-        <input value={newName} onChange={(event) => setNewName(event.target.value)} aria-label="New markdown file name" />
-        <button title="Create markdown file" onClick={() => void createFile()}><Plus size={14} /></button>
+        <input value={newName} onChange={(event) => setNewName(event.target.value)} aria-label="New markdown file name" disabled={actionBusy} />
+        <button title="Create markdown file" disabled={actionBusy} onClick={() => void createFile()}><Plus size={14} /></button>
       </div>
       <label className="searchbox">
         <Search size={14} />
         <input value={props.query} onChange={(event) => props.onQuery(event.target.value)} aria-label="Search .md files" />
       </label>
       <div className="folder-list">
-        <button className="folder-row" onClick={() => props.onFolder(null)}>
+        <button className="folder-row" disabled={actionBusy} onClick={() => props.onFolder(null)}>
           <Folder size={14} />
           <span>My Drive</span>
         </button>
@@ -148,6 +219,7 @@ function DriveBrowser(props: Props): React.ReactElement {
             folder={folder}
             childrenByFolder={expandedFolders}
             busyFolderId={expandingFolderId}
+            disabled={actionBusy}
             level={0}
             onFolder={props.onFolder}
             onToggle={(target) => void toggleFolder(target)}
@@ -155,7 +227,7 @@ function DriveBrowser(props: Props): React.ReactElement {
         ))}
       </div>
       {error ? <p className="inline-error">{error}</p> : null}
-      <div className="file-list" aria-busy={busy}>
+      <div className="file-list" aria-busy={busy || actionBusy}>
         {files.map((file) => (
           <div className="file-row" key={file.id}>
             {renaming?.id === file.id ? (
@@ -164,6 +236,7 @@ function DriveBrowser(props: Props): React.ReactElement {
                 value={renaming.name}
                 aria-label={`Rename ${file.name}`}
                 onChange={(event) => setRenaming({ id: file.id, name: event.target.value })}
+                disabled={actionBusy}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") void renameFile(file.id, renaming.name);
                   if (event.key === "Escape") setRenaming(null);
@@ -176,17 +249,14 @@ function DriveBrowser(props: Props): React.ReactElement {
               </button>
             )}
             {renaming?.id === file.id ? (
-              <button title="Confirm rename" onClick={() => void renameFile(file.id, renaming.name)}><Check size={14} /></button>
+              <button title="Confirm rename" disabled={actionBusy} onClick={() => void renameFile(file.id, renaming.name)}><Check size={14} /></button>
             ) : (
-              <button title="Rename file" onClick={() => setRenaming({ id: file.id, name: file.name })}><Pencil size={14} /></button>
+              <button title="Rename file" disabled={actionBusy} onClick={() => setRenaming({ id: file.id, name: file.name })}><Pencil size={14} /></button>
             )}
             {renaming?.id === file.id ? (
-              <button title="Cancel rename" onClick={() => setRenaming(null)}><X size={14} /></button>
+              <button title="Cancel rename" disabled={actionBusy} onClick={() => setRenaming(null)}><X size={14} /></button>
             ) : (
-              <button title="Trash file" onClick={() => void sendMessage({ type: "drive:trash-file", fileId: file.id }).then((response) => {
-                if (response.ok) setFiles((current) => current.filter((item) => item.id !== file.id));
-                else setError(response.message);
-              })}>
+              <button title="Trash file" disabled={actionBusy} onClick={() => void trashFile(file.id)}>
                 <Trash2 size={14} />
               </button>
             )}
@@ -201,6 +271,7 @@ function FolderTreeRow({
   folder,
   childrenByFolder,
   busyFolderId,
+  disabled,
   level,
   onFolder,
   onToggle
@@ -208,6 +279,7 @@ function FolderTreeRow({
   folder: DriveFolder;
   childrenByFolder: Record<string, DriveFolder[]>;
   busyFolderId: string | null;
+  disabled: boolean;
   level: number;
   onFolder(folderId: string): void;
   onToggle(folder: DriveFolder): void;
@@ -217,10 +289,10 @@ function FolderTreeRow({
   return (
     <div className="folder-tree-row">
       <div className="folder-row-shell" style={{ paddingLeft: level * 14 }}>
-        <button className="folder-toggle" title={expanded ? "Collapse folder" : "Expand folder"} aria-expanded={expanded} onClick={() => onToggle(folder)}>
+        <button className="folder-toggle" title={expanded ? "Collapse folder" : "Expand folder"} aria-expanded={expanded} disabled={disabled} onClick={() => onToggle(folder)}>
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </button>
-        <button className="folder-row" aria-busy={busyFolderId === folder.id} onClick={() => onFolder(folder.id)}>
+        <button className="folder-row" aria-busy={busyFolderId === folder.id} disabled={disabled} onClick={() => onFolder(folder.id)}>
           <Folder size={14} />
           <span>{folder.name}</span>
         </button>
@@ -231,6 +303,7 @@ function FolderTreeRow({
           folder={child}
           childrenByFolder={childrenByFolder}
           busyFolderId={busyFolderId}
+          disabled={disabled}
           level={level + 1}
           onFolder={onFolder}
           onToggle={onToggle}
@@ -238,6 +311,10 @@ function FolderTreeRow({
       ))}
     </div>
   );
+}
+
+function describeUnknownError(failure: unknown): string {
+  return failure instanceof Error ? failure.message : "Drive browser request failed.";
 }
 
 function FrontmatterPanel({ fields, onChange }: { fields: FrontmatterFields; onChange(fields: FrontmatterFields): void }): React.ReactElement {

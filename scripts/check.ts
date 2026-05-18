@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-const commands = ["build", "lint:markers", "lint:bundle", "lint:extension", "lint:drive", "lint:markdown", "lint:editor", "lint:ui", "lint:docs"];
+const commands = ["build", "lint:markers", "lint:branding", "lint:bundle", "lint:extension", "lint:content", "lint:conflict", "lint:drive", "lint:errors", "lint:export", "lint:markdown", "lint:media", "lint:editor", "lint:search", "lint:settings", "lint:ui", "lint:workflow", "lint:perf", "lint:stack", "lint:store", "lint:docs", "lint:git"];
 
 for (const command of commands) {
   await run("pnpm", [command]);

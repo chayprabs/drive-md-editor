@@ -14,6 +14,15 @@ pnpm build
 
 Load `dist` as an unpacked extension from `chrome://extensions`.
 
+## Release Verification
+
+After live Drive QA is complete, record the evidence described in `RELEASE_CHECKLIST.md` and run:
+
+```bash
+$env:MARKDRIVE_OAUTH_CLIENT_ID = Read-Host "Chrome Extension OAuth client ID"
+pnpm release:verify
+```
+
 ## OAuth Setup
 
 1. Open Google Cloud Console and create or select a project.
@@ -24,7 +33,7 @@ Load `dist` as an unpacked extension from `chrome://extensions`.
 6. Build with `MARKDRIVE_OAUTH_CLIENT_ID` set to the Chrome Extension client ID.
 
 ```bash
-$env:MARKDRIVE_OAUTH_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+$env:MARKDRIVE_OAUTH_CLIENT_ID = Read-Host "Chrome Extension OAuth client ID"
 pnpm build
 ```
 

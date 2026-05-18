@@ -96,9 +96,11 @@ button[aria-pressed="true"] {
 
 .app-shell {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 40px auto 1fr 28px;
   height: 100%;
   min-width: 360px;
+  overflow-x: hidden;
 }
 
 .toolbar {
@@ -228,7 +230,8 @@ button[aria-pressed="true"] {
 
 .workspace {
   display: grid;
-  grid-template-columns: 40px 260px 1fr;
+  grid-template-columns: 40px 260px minmax(0, 1fr);
+  min-width: 0;
   min-height: 0;
 }
 
@@ -830,7 +833,7 @@ button[aria-pressed="true"] {
   }
 
   .workspace {
-    grid-template-columns: 40px 1fr;
+    grid-template-columns: 40px minmax(0, 1fr);
   }
 
   .empty-state {

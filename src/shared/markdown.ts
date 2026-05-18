@@ -22,7 +22,7 @@ export interface CodeHighlighter {
 
 function createMarkdownIt(codeHighlighter?: CodeHighlighter): MarkdownIt {
   const md = new MarkdownIt({
-    html: true,
+    html: false,
     linkify: true,
     typographer: true,
     highlight(code, lang): string {
@@ -48,6 +48,16 @@ function createMarkdownIt(codeHighlighter?: CodeHighlighter): MarkdownIt {
     .use(mark)
     .use(taskLists, { enabled: true, label: true, labelAfter: true });
 
+  const defaultLinkOpen = md.renderer.rules.link_open ?? ((tokens, index, options, _env, self) => self.renderToken(tokens, index, options));
+  md.renderer.rules.link_open = (tokens, index, options, env, self) => {
+    const href = tokens[index].attrGet("href");
+    if (href && /^https?:\/\//i.test(href)) {
+      tokens[index].attrSet("target", "_blank");
+      tokens[index].attrSet("rel", "noopener noreferrer");
+    }
+    return defaultLinkOpen(tokens, index, options, env, self);
+  };
+
   for (const type of calloutTypes) {
     md.use(container, type, {
       render(tokens: Token[], index: number): string {
@@ -72,7 +82,7 @@ export function renderMarkdown(markdown: string, codeHighlighter?: CodeHighlight
 export function rewriteDriveImageUrls(markdown: string): string {
   return markdown.replace(/!\[([^\]]*)\]\((https:\/\/drive\.google\.com\/[^)\s]+)\)/g, (match, alt: string, url: string) => {
     const fileId = extractDriveFileId(url);
-    return fileId ? `![${alt}](https://drive.google.com/uc?export=view&id=${fileId})` : match;
+    return fileId ? `![${alt}](https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)})` : match;
   });
 }
 

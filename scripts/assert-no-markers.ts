@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const files = ["README.md", ...(await collectSourceFiles(resolve(root, "src")))];
-const forbidden = ["TODO", "placeholder", "stub"];
+const forbidden = ["TO" + "DO", "place" + "holder", "st" + "ub"];
 const offenders: string[] = [];
 
 for (const file of files) {

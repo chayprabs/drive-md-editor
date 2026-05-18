@@ -1,6 +1,7 @@
 import type { OpenDocument } from "./types";
 
 const storageKey = "markdrive.offlineQueue";
+const maxQueuedSaves = 25;
 
 export interface QueuedSave {
   id: string;
@@ -11,23 +12,35 @@ export interface QueuedSave {
 
 export async function queueOfflineSave(document: OpenDocument): Promise<QueuedSave[]> {
   const queue = await loadOfflineQueue();
-  const id = document.fileId ?? `new-${document.localVersion}`;
+  const normalizedDocument = normalizeOpenDocument(document);
+  if (!normalizedDocument) throw new Error("Invalid offline save document.");
+  const id = normalizedDocument.fileId ?? newDocumentQueueId(normalizedDocument);
   const existing = queue.find((item) => item.id === id);
   const item: QueuedSave = {
     id,
-    document,
+    document: normalizedDocument,
     queuedAt: existing?.queuedAt ?? new Date().toISOString(),
     attempts: existing?.attempts ?? 0
   };
-  const next = [item, ...queue.filter((entry) => entry.id !== id)];
+  const next = [item, ...queue.filter((entry) => entry.id !== id)].slice(0, maxQueuedSaves);
   await chrome.storage.local.set({ [storageKey]: next });
   return next;
+}
+
+function newDocumentQueueId(document: OpenDocument): string {
+  return `new-${document.folderId ?? "root"}-${document.name}`;
 }
 
 export async function loadOfflineQueue(): Promise<QueuedSave[]> {
   const stored = await chrome.storage.local.get(storageKey);
   const value = stored[storageKey];
-  return Array.isArray(value) ? value.filter(isQueuedSave) : [];
+  if (!Array.isArray(value)) return [];
+
+  const queue = value.map(normalizeQueuedSave).filter(isQueuedSave).slice(0, maxQueuedSaves);
+  if (queue.length !== value.length) {
+    await chrome.storage.local.set({ [storageKey]: queue });
+  }
+  return queue;
 }
 
 export async function markQueuedSaveAttempt(id: string): Promise<void> {
@@ -43,25 +56,73 @@ export async function removeQueuedSave(id: string): Promise<void> {
 }
 
 function isQueuedSave(value: unknown): value is QueuedSave {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Partial<QueuedSave>;
-  return (
-    typeof item.id === "string" &&
-    typeof item.queuedAt === "string" &&
-    typeof item.attempts === "number" &&
-    isOpenDocument(item.document)
-  );
+  return value !== null;
 }
 
-function isOpenDocument(value: unknown): value is OpenDocument {
-  if (!value || typeof value !== "object") return false;
+function normalizeQueuedSave(value: unknown): QueuedSave | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<QueuedSave>;
+  const id = typeof item.id === "string" ? item.id.trim() : "";
+  const document = normalizeOpenDocument(item.document);
+  if (
+    id &&
+    typeof item.id === "string" &&
+    typeof item.queuedAt === "string" &&
+    Number.isFinite(Date.parse(item.queuedAt)) &&
+    typeof item.attempts === "number" &&
+    Number.isInteger(item.attempts) &&
+    item.attempts >= 0 &&
+    document
+  ) {
+    return {
+      id,
+      document,
+      queuedAt: item.queuedAt.trim(),
+      attempts: item.attempts
+    };
+  }
+  return null;
+}
+
+function normalizeOpenDocument(value: unknown): OpenDocument | null {
+  if (!value || typeof value !== "object") return null;
   const item = value as Partial<OpenDocument>;
-  return (
-    (typeof item.fileId === "string" || item.fileId === null) &&
-    typeof item.name === "string" &&
+  const fileId = optionalDriveId(item.fileId);
+  const name = typeof item.name === "string" ? item.name.trim() : "";
+  const modifiedTime = optionalDateString(item.modifiedTime);
+  const folderId = optionalDriveId(item.folderId);
+  if (
+    fileId !== undefined &&
+    name &&
     typeof item.markdown === "string" &&
-    (typeof item.modifiedTime === "string" || item.modifiedTime === null) &&
-    (typeof item.folderId === "string" || item.folderId === null) &&
-    typeof item.localVersion === "number"
-  );
+    modifiedTime !== undefined &&
+    folderId !== undefined &&
+    typeof item.localVersion === "number" &&
+    Number.isInteger(item.localVersion) &&
+    item.localVersion >= 0
+  ) {
+    return {
+      fileId,
+      name,
+      markdown: item.markdown,
+      modifiedTime,
+      folderId,
+      localVersion: item.localVersion
+    };
+  }
+  return null;
+}
+
+function optionalDriveId(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function optionalDateString(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed && Number.isFinite(Date.parse(trimmed)) ? trimmed : undefined;
 }

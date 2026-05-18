@@ -22,7 +22,13 @@ draft: true
 Callout body
 :::
 
+<script>alert("nope")</script>
+
 ![diagram](https://drive.google.com/file/d/drive-file-123/view?usp=sharing)
+
+[external](https://example.com/docs)
+
+[local](#visible-title)
 
 \`\`\`ts
 const value: string = "ok";
@@ -51,6 +57,10 @@ expect(html.includes("callout callout-note"), "Rendered markdown must include no
 expect(html.includes("type=\"checkbox\""), "Rendered markdown must include task checkboxes.");
 expect(html.includes("https://drive.google.com/uc?export=view&amp;id=drive-file-123"), "Rendered markdown must rewrite Drive image share URLs.");
 expect(html.includes("hljs-keyword"), "Rendered markdown must include static syntax highlighting when a highlighter is provided.");
+expect(!html.includes("<script>"), "Rendered markdown must not emit raw script tags.");
+expect(html.includes("&lt;script&gt;alert(") && html.includes("nope") && html.includes(")&lt;/script&gt;"), "Rendered markdown must escape raw HTML.");
+expect(html.includes("href=\"https://example.com/docs\"") && html.includes("target=\"_blank\"") && html.includes("rel=\"noopener noreferrer\""), "Rendered external links must open safely outside the extension tab.");
+expect(html.includes("href=\"#visible-title\"") && !html.includes("href=\"#visible-title\" target=\"_blank\""), "Rendered local anchors must stay in the extension tab.");
 
 const rewritten = writeFrontmatter(markdown, {
   title: "Updated",
@@ -67,6 +77,8 @@ expect(markdownWithoutFrontmatter(rewritten).includes("# Visible Title"), "Front
 
 const queryImage = rewriteDriveImageUrls("![alt](https://drive.google.com/open?id=query-file-456)");
 expect(queryImage.includes("https://drive.google.com/uc?export=view&id=query-file-456"), "Drive image query URLs must rewrite to direct embeds.");
+const encodedImage = rewriteDriveImageUrls("![alt](https://drive.google.com/open?id=file%20id%2Fwith%20chars)");
+expect(encodedImage.includes("https://drive.google.com/uc?export=view&id=file%20id%2Fwith%20chars"), "Drive image direct embeds must URL-encode rewritten file IDs.");
 
 if (failures.length > 0) {
   console.error(failures.map((failure) => `- ${failure}`).join("\n"));

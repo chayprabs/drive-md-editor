@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { RotateCcw } from "lucide-react";
 import { sendMessage } from "../shared/messages";
@@ -8,26 +8,72 @@ import "../app/styles.css";
 
 function Options(): React.ReactElement {
   const [settings, setSettings] = useState<MarkDriveSettings>(defaultSettings);
+  const [error, setError] = useState<string | null>(null);
+  const settingsRef = useRef<MarkDriveSettings>(defaultSettings);
 
   useEffect(() => {
     void sendMessage({ type: "settings:get" }).then((response) => {
-      if (response.ok && "settings" in response) setSettings(response.settings);
+      if (response.ok && "settings" in response) {
+        settingsRef.current = response.settings;
+        setSettings(response.settings);
+        setError(null);
+        return;
+      }
+      if (!response.ok) setError(response.message);
+    }).catch((failure: unknown) => {
+      setError(failure instanceof Error ? failure.message : "Settings failed to load.");
     });
   }, []);
 
   async function update(update: Partial<MarkDriveSettings>): Promise<void> {
-    const response = await sendMessage({ type: "settings:update", settings: update });
-    if (response.ok && "settings" in response) setSettings(response.settings);
+    const previous = settingsRef.current;
+    const next = { ...settingsRef.current, ...update };
+    settingsRef.current = next;
+    setSettings(next);
+    setError(null);
+    try {
+      const response = await sendMessage({ type: "settings:update", settings: next });
+      if (response.ok && "settings" in response) {
+        settingsRef.current = response.settings;
+        setSettings(response.settings);
+        return;
+      }
+      settingsRef.current = previous;
+      setSettings(previous);
+      if (!response.ok) setError(response.message);
+    } catch (failure) {
+      settingsRef.current = previous;
+      setSettings(previous);
+      setError(failure instanceof Error ? failure.message : "Settings failed to save.");
+    }
   }
 
   async function reset(): Promise<void> {
-    const response = await sendMessage({ type: "settings:update", settings: defaultSettings });
-    if (response.ok && "settings" in response) setSettings(response.settings);
+    const previous = settingsRef.current;
+    settingsRef.current = defaultSettings;
+    setSettings(defaultSettings);
+    setError(null);
+    try {
+      const response = await sendMessage({ type: "settings:update", settings: defaultSettings });
+      if (response.ok && "settings" in response) {
+        settingsRef.current = response.settings;
+        setSettings(response.settings);
+        return;
+      }
+      settingsRef.current = previous;
+      setSettings(previous);
+      if (!response.ok) setError(response.message);
+    } catch (failure) {
+      settingsRef.current = previous;
+      setSettings(previous);
+      setError(failure instanceof Error ? failure.message : "Settings failed to reset.");
+    }
   }
 
   return (
     <main className="options-page">
       <h1>MarkDrive Options</h1>
+      {error ? <p className="inline-error" role="alert">{error}</p> : null}
       <label>Theme<select value={settings.theme} onChange={(event) => void update({ theme: event.target.value as ThemeName })}>
         <option value="dark">Dark</option>
         <option value="light">Light</option>

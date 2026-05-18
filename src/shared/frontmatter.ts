@@ -4,7 +4,7 @@ import type { FrontmatterFields } from "./types";
 type FrontmatterValue = string | boolean | string[] | number | Date | null;
 
 interface ParsedFrontmatter {
-  data: Record<string, FrontmatterValue>;
+  data: Record<string, unknown>;
   content: string;
   lineOffset: number;
 }
@@ -14,7 +14,7 @@ export function readFrontmatter(markdown: string): FrontmatterFields {
   return {
     title: stringField(parsed.data.title),
     date: stringField(parsed.data.date),
-    tags: Array.isArray(parsed.data.tags) ? parsed.data.tags : [],
+    tags: tagsField(parsed.data.tags),
     author: stringField(parsed.data.author),
     draft: typeof parsed.data.draft === "boolean" ? parsed.data.draft : false
   };
@@ -31,12 +31,13 @@ export function markdownContentWithLineOffset(markdown: string): { content: stri
 
 export function writeFrontmatter(markdown: string, fields: FrontmatterFields): string {
   const parsed = parseFrontmatter(markdown);
+  const tags = normalizeTags(fields.tags);
   const data: Record<string, FrontmatterValue | undefined> = {
     ...parsed.data,
-    title: fields.title || undefined,
-    date: fields.date || undefined,
-    tags: fields.tags.length > 0 ? fields.tags : undefined,
-    author: fields.author || undefined,
+    title: stringField(fields.title) || undefined,
+    date: stringField(fields.date) || undefined,
+    tags: tags.length > 0 ? tags : undefined,
+    author: stringField(fields.author) || undefined,
     draft: fields.draft
   };
   return matter.stringify(parsed.content.trimStart(), compactFrontmatter(data)).trimEnd() + "\n";
@@ -59,9 +60,18 @@ function compactFrontmatter(data: Record<string, FrontmatterValue | undefined>):
   return Object.fromEntries(Object.entries(data).filter((entry): entry is [string, FrontmatterValue] => entry[1] !== undefined));
 }
 
-function stringField(value: FrontmatterValue | undefined): string {
-  if (typeof value === "string") return value;
+function stringField(value: unknown): string {
+  if (typeof value === "string") return value.trim();
   if (typeof value === "number") return String(value);
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return "";
+}
+
+function tagsField(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+  return normalizeTags(values);
+}
+
+function normalizeTags(values: unknown[]): string[] {
+  return Array.from(new Set(values.map((item) => stringField(item)).filter(Boolean)));
 }

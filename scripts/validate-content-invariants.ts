@@ -1,0 +1,45 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
+const root = resolve(import.meta.dirname, "..");
+const source = await readFile(resolve(root, "src/content/drive-interceptor.ts"), "utf8");
+const driveUrl = await readFile(resolve(root, "src/shared/drive-url.ts"), "utf8");
+const failures: string[] = [];
+
+expect(source.includes("document.addEventListener(\"click\""), "Content script must intercept Drive click events.");
+expect(source.includes("document.addEventListener(\"contextmenu\""), "Content script must capture Drive context menu targets.");
+expect(source.includes("new MutationObserver(scheduleScan)"), "Content script must rescan dynamic Drive rows.");
+expect(source.includes("window.requestAnimationFrame"), "Content script scans must be scheduled with requestAnimationFrame.");
+expect(source.includes("const startedAt = performance.now()"), "Content script must time row scans.");
+expect(source.includes("performance.now() - startedAt > 4"), "Content script must stop scans before the 5ms budget.");
+expect(source.includes("document.querySelectorAll<HTMLElement>(\"a[href], [data-id][aria-label], [data-tooltip]\")"), "Content script must cover Drive grid and list candidates.");
+expect(source.includes("markdownNamePattern.test(label)"), "Content script must filter candidates to Markdown names.");
+expect(source.includes("void openInMarkDrive(fileId, extractDriveFolderIdFromUrl(location.href))"), "Content script clicks must open MarkDrive with file and folder context.");
+expect(source.includes("async function openInMarkDrive"), "Content script open action must handle runtime failures.");
+expect(source.includes("showMarkDriveNotice(`MarkDrive could not open this file."), "Content script open failures must show user feedback in Drive.");
+expect(source.includes("void captureContextTarget(fileId, extractDriveFolderIdFromUrl(location.href))"), "Content script context menu fallback must store the target in session storage.");
+expect(source.includes("async function captureContextTarget"), "Context menu capture must handle storage failures.");
+expect(source.includes("showMarkDriveNotice(`MarkDrive could not prepare the Drive context menu."), "Context menu capture failures must show user feedback in Drive.");
+expect(source.includes("role\", \"alert\"") && source.includes("aria-live\", \"assertive\""), "Content script failures must be announced accessibly.");
+expect(source.includes("extractDriveFileIdFromUrl(anchor.href) ?? extractFileIdFromElement(anchor)"), "Content script must resolve Drive file IDs from links and row metadata.");
+expect(source.includes("import { cleanDriveId, extractDriveFileIdFromUrl, extractDriveFolderIdFromUrl }"), "Content script must share Drive ID cleanup with URL parsing.");
+expect(source.includes("return cleanDriveId(host?.dataset.id ?? host?.dataset.target ?? host?.dataset.docId);"), "Content script must normalize DOM-provided Drive file IDs.");
+expect(source.includes("extractDriveFolderIdFromUrl(location.href)"), "Content script must preserve the current Drive folder.");
+expect(driveUrl.includes("export function extractDriveFileIdFromUrl"), "Shared Drive URL parser must expose file ID extraction.");
+expect(driveUrl.includes("export function extractDriveFolderIdFromUrl"), "Shared Drive URL parser must expose folder ID extraction.");
+expect(driveUrl.includes("export function cleanDriveId"), "Shared Drive URL parser must expose ID cleanup for DOM metadata.");
+expect(driveUrl.includes("decodeURIComponent(value.trim())"), "Shared Drive URL parser must decode URL-encoded Drive IDs exactly once.");
+expect(driveUrl.includes("const decoded = decodeURIComponent(value.trim()).trim();"), "Shared Drive URL parser must trim decoded Drive IDs.");
+expect(driveUrl.includes("return decoded ? decoded : null;"), "Shared Drive URL parser must reject IDs that decode to blank values.");
+expect(driveUrl.includes("[^/?#&]+") && driveUrl.includes("[?&]id=([^&#]+)"), "Shared Drive URL parser must strip query/hash fragments from fallback IDs.");
+
+if (failures.length > 0) {
+  console.error(failures.map((failure) => `- ${failure}`).join("\n"));
+  process.exit(1);
+}
+
+console.log("Content script invariants passed.");
+
+function expect(condition: boolean, message: string): void {
+  if (!condition) failures.push(message);
+}
