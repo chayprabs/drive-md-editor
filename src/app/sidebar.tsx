@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Check, ChevronRight, FileText, Folder, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileText, Folder, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { sendMessage } from "../shared/messages";
 import type { DriveFile, DriveFolder, DriveFolderPathItem, FrontmatterFields, OpenDocument, OutlineItem } from "../shared/types";
 
@@ -47,6 +47,8 @@ function DriveBrowser(props: Props): React.ReactElement {
   const [path, setPath] = useState<DriveFolderPathItem[]>([{ id: null, name: "My Drive" }]);
   const [newName, setNewName] = useState("Untitled.md");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, DriveFolder[]>>({});
+  const [expandingFolderId, setExpandingFolderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -96,6 +98,26 @@ function DriveBrowser(props: Props): React.ReactElement {
     setError(response.message);
   }
 
+  async function toggleFolder(folder: DriveFolder): Promise<void> {
+    if (expandedFolders[folder.id]) {
+      setExpandedFolders((current) => {
+        const next = { ...current };
+        delete next[folder.id];
+        return next;
+      });
+      return;
+    }
+
+    setExpandingFolderId(folder.id);
+    const response = await sendMessage({ type: "drive:list-folders", folderId: folder.id });
+    setExpandingFolderId(null);
+    if (response.ok && "folders" in response) {
+      setExpandedFolders((current) => ({ ...current, [folder.id]: response.folders }));
+      return;
+    }
+    if (!response.ok) setError(response.message);
+  }
+
   return (
     <div className="panel">
       <h2>Drive</h2>
@@ -121,10 +143,15 @@ function DriveBrowser(props: Props): React.ReactElement {
           <span>My Drive</span>
         </button>
         {folders.map((folder) => (
-          <button className="folder-row" key={folder.id} onClick={() => props.onFolder(folder.id)}>
-            <Folder size={14} />
-            <span>{folder.name}</span>
-          </button>
+          <FolderTreeRow
+            key={folder.id}
+            folder={folder}
+            childrenByFolder={expandedFolders}
+            busyFolderId={expandingFolderId}
+            level={0}
+            onFolder={props.onFolder}
+            onToggle={(target) => void toggleFolder(target)}
+          />
         ))}
       </div>
       {error ? <p className="inline-error">{error}</p> : null}
@@ -166,6 +193,49 @@ function DriveBrowser(props: Props): React.ReactElement {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function FolderTreeRow({
+  folder,
+  childrenByFolder,
+  busyFolderId,
+  level,
+  onFolder,
+  onToggle
+}: {
+  folder: DriveFolder;
+  childrenByFolder: Record<string, DriveFolder[]>;
+  busyFolderId: string | null;
+  level: number;
+  onFolder(folderId: string): void;
+  onToggle(folder: DriveFolder): void;
+}): React.ReactElement {
+  const expanded = Boolean(childrenByFolder[folder.id]);
+  const childFolders = childrenByFolder[folder.id] ?? [];
+  return (
+    <div className="folder-tree-row">
+      <div className="folder-row-shell" style={{ paddingLeft: level * 14 }}>
+        <button className="folder-toggle" title={expanded ? "Collapse folder" : "Expand folder"} aria-expanded={expanded} onClick={() => onToggle(folder)}>
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </button>
+        <button className="folder-row" aria-busy={busyFolderId === folder.id} onClick={() => onFolder(folder.id)}>
+          <Folder size={14} />
+          <span>{folder.name}</span>
+        </button>
+      </div>
+      {childFolders.map((child) => (
+        <FolderTreeRow
+          key={child.id}
+          folder={child}
+          childrenByFolder={childrenByFolder}
+          busyFolderId={busyFolderId}
+          level={level + 1}
+          onFolder={onFolder}
+          onToggle={onToggle}
+        />
+      ))}
     </div>
   );
 }
