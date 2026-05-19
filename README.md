@@ -10,9 +10,14 @@ MarkDrive is a Manifest V3 Chrome Extension for editing, previewing, and saving 
 pnpm install
 pnpm generate:icons
 pnpm build
+pnpm check
 ```
 
+`pnpm check` runs the build, bundle limits, marker scan, and invariant scripts (including `lint:quality` and `lint:offline`).
+
 Load `dist` as an unpacked extension from `chrome://extensions`.
+
+File type support (Markdown variants, plain text, JSON): [docs/file-type-support.md](./docs/file-type-support.md)
 
 ## Release Verification
 
