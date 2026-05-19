@@ -24,10 +24,15 @@ export function Toasts({ toasts, onDismiss }: { toasts: ToastMessage[]; onDismis
   return (
     <div className="toasts" role="status" aria-live="polite">
       {toasts.map((toast) => (
-        <button key={toast.id} className={`toast ${toast.tone}`} onClick={() => onDismiss(toast.id)}>
-          <strong>{toast.title}</strong>
-          {toast.detail ? <span>{toast.detail}</span> : null}
-        </button>
+        <div key={toast.id} className={`toast ${toast.tone}`}>
+          <div className="toast-body">
+            <strong>{toast.title}</strong>
+            {toast.detail ? <span>{toast.detail}</span> : null}
+          </div>
+          <button type="button" className="toast-dismiss" aria-label="Dismiss notification" onClick={() => onDismiss(toast.id)}>
+            ×
+          </button>
+        </div>
       ))}
     </div>
   );

@@ -49,10 +49,10 @@ export function DriveIssueModal({ issue, onClose, onRetry, onReauth }: Props): R
           </p>
         ) : null}
         <div className="modal-actions">
-          <button onClick={onClose}>Close</button>
-          {issue.kind === "auth" ? <button onClick={onReauth}>Re-authenticate</button> : null}
+          <button type="button" className="btn-ghost" onClick={onClose}>Close</button>
+          {issue.kind === "auth" ? <button type="button" className="btn-primary" onClick={onReauth}>Re-authenticate</button> : null}
           {issue.kind !== "deleted" ? (
-            <button onClick={onRetry} disabled={issue.kind === "rate-limit" && remainingMs > 0}>
+            <button type="button" className="btn-primary" onClick={onRetry} disabled={issue.kind === "rate-limit" && remainingMs > 0}>
               <RotateCcw size={14} /> Retry
             </button>
           ) : null}
