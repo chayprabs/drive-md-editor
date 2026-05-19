@@ -47,7 +47,7 @@ expect(driveApi.includes("decodeImageDataUrl(dataUrl, mimeType)"), "Drive image 
 expect(driveApi.includes("function decodeImageDataUrl(dataUrl: string, mimeType: string)"), "Drive image data URL validation must be centralized.");
 expect(driveApi.includes("contentType.startsWith(\"image/\")"), "Drive image upload must reject non-image data URLs.");
 expect(driveApi.includes("mimeType.toLowerCase() !== contentType"), "Drive image upload must reject mismatched MIME types.");
-expect(driveApi.includes("try {\n    binary = atob(match[2]);") && driveApi.includes("throw new DriveApiError(400, \"Invalid image data URL.\");"), "Drive image upload must convert invalid base64 into a structured error.");
+expect(driveApi.includes("binary = atob(match[2])") && driveApi.includes("catch") && driveApi.includes("throw new DriveApiError(400, \"Invalid image data URL.\")"), "Drive image upload must convert invalid base64 into a structured error.");
 expect(driveApi.includes("if (binary.length === 0) throw new DriveApiError(400, \"Image upload is empty.\");"), "Drive image upload must reject empty image data.");
 expect(driveApi.includes("binary = atob(match[2]);") && driveApi.includes("new Uint8Array(binary.length)"), "Drive image upload must convert validated base64 image data.");
 expect(driveApi.includes("uploadType=multipart"), "Drive image upload must use multipart upload.");

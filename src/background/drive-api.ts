@@ -1,5 +1,6 @@
 import type { DriveFile, DriveFolder, DriveFolderPathItem, OpenDocument } from "../shared/types";
 import { normalizeDriveAssetName, normalizeMarkdownFileName } from "../shared/drive-names";
+import { isDriveResourceId } from "../shared/drive-url";
 
 const apiBase = "https://www.googleapis.com/drive/v3";
 const uploadBase = "https://www.googleapis.com/upload/drive/v3";
@@ -12,6 +13,14 @@ export class DriveApiError extends Error {
   ) {
     super(message);
   }
+}
+
+function assertDriveResourceId(fileId: string, label = "Drive file id"): void {
+  if (!isDriveResourceId(fileId)) throw new DriveApiError(400, `Invalid ${label}.`);
+}
+
+function assertOptionalDriveResourceId(folderId: string | null, label = "Drive folder id"): void {
+  if (folderId) assertDriveResourceId(folderId, label);
 }
 
 async function request<T>(token: string, input: RequestInfo | URL, init: RequestInit = {}): Promise<T> {
@@ -31,6 +40,7 @@ async function request<T>(token: string, input: RequestInfo | URL, init: Request
 }
 
 export async function getMarkdownFile(token: string, fileId: string): Promise<{ file: DriveFile; markdown: string }> {
+  assertDriveResourceId(fileId);
   const fields = "id,name,mimeType,modifiedTime,parents,webViewLink";
   const file = await request<DriveFile>(token, `${apiBase}/files/${fileId}?fields=${encodeURIComponent(fields)}`);
   const contentResponse = await fetch(`${apiBase}/files/${fileId}?alt=media`, {
@@ -46,6 +56,7 @@ export async function saveMarkdownFile(
   markdown: string,
   previousModifiedTime: string | null
 ): Promise<OpenDocument> {
+  assertDriveResourceId(fileId);
   const current = await request<DriveFile>(
     token,
     `${apiBase}/files/${fileId}?fields=${encodeURIComponent("id,name,mimeType,modifiedTime,parents")}`
@@ -81,6 +92,7 @@ export async function createMarkdownFile(
   markdown: string,
   folderId: string | null
 ): Promise<OpenDocument> {
+  assertOptionalDriveResourceId(folderId);
   const metadata = {
     name: normalizeMarkdownFileName(name),
     mimeType: "text/markdown",
@@ -110,6 +122,7 @@ export async function createMarkdownFile(
 }
 
 export async function listMarkdownFiles(token: string, folderId: string | null, query: string): Promise<DriveFile[]> {
+  assertOptionalDriveResourceId(folderId);
   const terms = ["trashed = false", `name contains ${driveQueryLiteral(".md")}`];
   if (folderId) terms.push(`${driveQueryLiteral(folderId)} in parents`);
   if (query.trim()) terms.push(`name contains ${driveQueryLiteral(query.trim())}`);
@@ -125,6 +138,7 @@ export async function listMarkdownFiles(token: string, folderId: string | null, 
 }
 
 export async function listFolders(token: string, folderId: string | null): Promise<DriveFolder[]> {
+  assertOptionalDriveResourceId(folderId);
   const parent = folderId ?? "root";
   return listDriveFiles<DriveFolder>(token, new URLSearchParams({
     q: [
@@ -141,6 +155,7 @@ export async function listFolders(token: string, folderId: string | null): Promi
 export async function getFolderPath(token: string, folderId: string | null): Promise<DriveFolderPathItem[]> {
   const path: DriveFolderPathItem[] = [{ id: null, name: "My Drive" }];
   if (!folderId) return path;
+  assertDriveResourceId(folderId, "Drive folder id");
 
   const folders: DriveFolder[] = [];
   let currentId: string | undefined = folderId;
@@ -159,6 +174,7 @@ export async function getFolderPath(token: string, folderId: string | null): Pro
 }
 
 export async function renameFile(token: string, fileId: string, name: string): Promise<void> {
+  assertDriveResourceId(fileId);
   await request(token, `${apiBase}/files/${fileId}`, {
     method: "PATCH",
     body: JSON.stringify({ name: normalizeMarkdownFileName(name) })
@@ -166,6 +182,7 @@ export async function renameFile(token: string, fileId: string, name: string): P
 }
 
 export async function trashFile(token: string, fileId: string): Promise<void> {
+  assertDriveResourceId(fileId);
   await request(token, `${apiBase}/files/${fileId}`, {
     method: "PATCH",
     body: JSON.stringify({ trashed: true })
@@ -179,6 +196,7 @@ export async function uploadImage(
   dataUrl: string,
   folderId: string | null
 ): Promise<string> {
+  assertOptionalDriveResourceId(folderId);
   const imagesFolder = await ensureImagesFolder(token, folderId);
   const { bytes, contentType } = decodeImageDataUrl(dataUrl, mimeType);
   const metadata = { name: normalizeDriveAssetName(name), parents: [imagesFolder] };
@@ -220,6 +238,7 @@ function driveQueryLiteral(value: string): string {
 }
 
 async function ensureImagesFolder(token: string, parentFolderId: string | null): Promise<string> {
+  assertOptionalDriveResourceId(parentFolderId);
   const parent = parentFolderId ?? "root";
   const params = new URLSearchParams({
     q: [

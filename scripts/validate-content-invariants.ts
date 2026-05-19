@@ -30,8 +30,8 @@ expect(driveUrl.includes("export function extractDriveFileIdFromUrl"), "Shared D
 expect(driveUrl.includes("export function extractDriveFolderIdFromUrl"), "Shared Drive URL parser must expose folder ID extraction.");
 expect(driveUrl.includes("export function cleanDriveId"), "Shared Drive URL parser must expose ID cleanup for DOM metadata.");
 expect(driveUrl.includes("decodeURIComponent(value.trim())"), "Shared Drive URL parser must decode URL-encoded Drive IDs exactly once.");
-expect(driveUrl.includes("const decoded = decodeURIComponent(value.trim()).trim();"), "Shared Drive URL parser must trim decoded Drive IDs.");
-expect(driveUrl.includes("return decoded ? decoded : null;"), "Shared Drive URL parser must reject IDs that decode to blank values.");
+expect(driveUrl.includes("export function isDriveResourceId"), "Shared Drive URL parser must expose Drive resource id validation.");
+expect(driveUrl.includes("isDriveResourceId(decoded) ? decoded : null"), "Shared Drive URL parser must reject malformed Drive ids.");
 expect(driveUrl.includes("[^/?#&]+") && driveUrl.includes("[?&]id=([^&#]+)"), "Shared Drive URL parser must strip query/hash fragments from fallback IDs.");
 
 if (failures.length > 0) {

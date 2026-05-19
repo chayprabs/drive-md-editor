@@ -31,6 +31,10 @@ chrome.runtime.onInstalled.addListener(({ reason }) => {
   void initializeExtension(reason);
 });
 
+chrome.runtime.onStartup.addListener(() => {
+  void runBackgroundAction(flushOfflineQueue);
+});
+
 chrome.action.onClicked.addListener(() => {
   void runBackgroundAction(() => openEditor(null, null));
 });
@@ -228,7 +232,7 @@ async function openFromContext(url: string): Promise<void> {
     return;
   }
 
-  await openEditor(null, null);
+  throw new Error("MarkDrive could not determine which Drive file to open from this context.");
 }
 
 function toResponseError(error: unknown): BackgroundResponse {

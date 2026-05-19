@@ -12,6 +12,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "generate:icons": "tsx scripts/generate-icons.ts",
     "generate:og": "tsx scripts/generate-og.ts",
+    "generate:live-evidence": "tsx scripts/generate-live-evidence-template.ts",
     "lint:markers": "tsx scripts/assert-no-markers.ts",
     "lint:branding": "tsx scripts/validate-branding-invariants.ts",
     "lint:bundle": "tsx scripts/assert-bundle-size.ts",

@@ -6,7 +6,10 @@ const source = await readFile(resolve(root, "src/background/drive-api.ts"), "utf
 const driveNames = await readFile(resolve(root, "src/shared/drive-names.ts"), "utf8");
 const failures: string[] = [];
 
-expect(source.includes("import { normalizeDriveAssetName, normalizeMarkdownFileName } from \"../shared/drive-names\""), "Drive API must use shared Drive filename normalization.");
+expect(source.includes("import { isDriveResourceId } from \"../shared/drive-url\""), "Drive API must validate Drive resource ids through shared helpers.");
+expect(source.includes("function assertDriveResourceId"), "Drive API must reject malformed Drive file ids before requests.");
+expect(source.includes("function assertOptionalDriveResourceId"), "Drive API must reject malformed optional Drive folder ids before requests.");
+expect(source.includes("Invalid ${label}."), "Drive API must surface invalid Drive id failures as structured 400 errors.");
 expect(driveNames.includes("export function normalizeMarkdownFileName"), "Shared Drive filename normalizer must exist.");
 expect(driveNames.includes("export function normalizeDriveAssetName"), "Shared Drive asset filename normalizer must exist.");
 expect(driveNames.includes("return \"Untitled.md\""), "Markdown filename normalization must reject empty names.");

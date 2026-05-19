@@ -11,17 +11,14 @@ These notes capture the final setup, design direction, and local checkout steps 
 
 ## What Is Needed To Finish Release
 
-1. Create or choose a Google Cloud project for MarkDrive.
-2. Enable Google Drive API in that project.
-3. Configure the OAuth consent screen.
-4. Load the unpacked extension once and copy its Chrome extension ID.
-5. Create a Chrome Extension OAuth client ID using that extension ID.
-6. Rebuild MarkDrive with `MARKDRIVE_OAUTH_CLIENT_ID`.
-7. Complete live Google Drive QA.
-8. Save evidence under `output/live/`.
-9. Create `release/live-drive-verification.json`.
-10. Run `pnpm release:verify`.
-11. If verification passes, tag and push `v1.0.0`.
+1. Follow [oauth-setup.md](./oauth-setup.md) to create production OAuth.
+2. Follow [live-qa-guide.md](./live-qa-guide.md) to capture real Drive evidence.
+3. Run `pnpm generate:live-evidence`, then copy the example file to `release/live-drive-verification.json` with real values.
+4. Rebuild with `MARKDRIVE_OAUTH_CLIENT_ID` set to the Chrome Extension client id.
+5. Run `pnpm release:verify`.
+6. If verification passes, tag and push `v1.0.0`.
+
+Detailed handoff steps remain below for reference.
 
 ## OAuth Setup Values Needed
 
@@ -43,6 +40,14 @@ https://www.googleapis.com/auth/drive.metadata.readonly
 ```
 
 ## Google Cloud Setup Steps
+
+See [oauth-setup.md](./oauth-setup.md) for the full workflow, including what **not** to do:
+
+- Do not create a Web application OAuth client.
+- Do not create a Desktop OAuth client.
+- Do not use a client secret.
+
+Summary:
 
 1. Open Google Cloud Console.
 2. Create or choose a project, for example `MarkDrive Production`.

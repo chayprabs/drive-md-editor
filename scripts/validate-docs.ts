@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const readme = await readFile(resolve(root, "README.md"), "utf8");
 const releaseChecklist = await readFile(resolve(root, "RELEASE_CHECKLIST.md"), "utf8");
+const oauthSetup = await readFile(resolve(root, "docs/oauth-setup.md"), "utf8");
+const liveQaGuide = await readFile(resolve(root, "docs/live-qa-guide.md"), "utf8");
 const failures: string[] = [];
 
 for (const text of [
@@ -25,6 +27,16 @@ for (const text of [
   expect(readme.includes(text), `README missing required text: ${text}`);
 }
 
+for (const text of [
+  "docs/oauth-setup.md",
+  "docs/live-qa-guide.md",
+  "pnpm generate:live-evidence",
+  "Do **not** create a Web application",
+  "does not use a client secret"
+]) {
+  expect(readme.includes(text), `README missing required release text: ${text}`);
+}
+
 for (const row of [
   "| Ctrl+S | Save to Drive |",
   "| Ctrl+B | Bold selection |",
@@ -43,7 +55,35 @@ for (const moduleName of ["manifest", "background", "content", "app", "options"]
 }
 
 for (const text of [
+  "Chrome Extension",
+  "Do **not** create a **Web application**",
+  "Do **not** create a **Desktop app**",
+  "client secret",
+  "chrome://extensions",
+  "Read-Host \"Chrome Extension OAuth client ID\"",
+  "pnpm lint:oauth",
+  "live-qa-guide.md"
+]) {
+  expect(oauthSetup.includes(text), `OAuth setup guide missing required text: ${text}`);
+}
+
+for (const text of [
+  "output/live/",
+  "pnpm generate:live-evidence",
+  "live-drive-verification.example.json",
+  "drive-grid-open",
+  "ctrl-s-save-in-place",
+  "layout-and-guards",
+  "pnpm release:verify"
+]) {
+  expect(liveQaGuide.includes(text), `Live QA guide missing required text: ${text}`);
+}
+
+for (const text of [
   "Live Drive Verification",
+  "docs/oauth-setup.md",
+  "docs/live-qa-guide.md",
+  "pnpm generate:live-evidence",
   "production Chrome Extension OAuth client ID",
   "Google Drive grid view",
   "Google Drive list view",
@@ -62,6 +102,7 @@ for (const text of [
   "Dark, Light, Dracula, Nord, and Solarized",
   "split, editor-only, preview-only",
   "release/live-drive-verification.json",
+  "live-drive-verification.example.json",
   "32-character Chrome `extensionId`",
   "Chrome or Edge `browser` with version",
   "not after the root completion time",
@@ -86,6 +127,8 @@ for (const forbidden of [
 ]) {
   expect(!readme.includes(forbidden), `README must not contain fake setup value: ${forbidden}`);
   expect(!releaseChecklist.includes(forbidden), `Release checklist must not contain fake setup value: ${forbidden}`);
+  expect(!oauthSetup.includes(forbidden), `OAuth setup guide must not contain fake setup value: ${forbidden}`);
+  expect(!liveQaGuide.includes(forbidden), `Live QA guide must not contain fake setup value: ${forbidden}`);
 }
 
 if (failures.length > 0) {
