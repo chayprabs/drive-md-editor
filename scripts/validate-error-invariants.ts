@@ -130,6 +130,7 @@ expect(queue.includes("chrome.storage.local.set({ [storageKey]: queue })"), "Off
 expect(queue.includes("attempts: existing?.attempts ?? 0"), "Offline queue must retain retry attempt counts.");
 expect(queue.includes("markQueuedSaveAttempt"), "Offline queue must record retry attempts.");
 expect(queue.includes("removeQueuedSave"), "Offline queue must remove synced saves.");
+expect(background.includes("chrome.runtime.onStartup.addListener"), "Background must flush offline saves when Chrome starts.");
 expect(background.includes("chrome.alarms.onAlarm.addListener"), "Background must retry offline saves on alarms.");
 expect(background.includes("flushOfflineQueue"), "Background must flush queued offline saves.");
 expect(background.includes("item.attempts >= maxOfflineRetryAttempts"), "Background offline flush must stop retrying exhausted saves.");
