@@ -14,6 +14,8 @@ pnpm build
 
 Load `dist` as an unpacked extension from `chrome://extensions`.
 
+File type support (Markdown variants, plain text, JSON): [docs/file-type-support.md](./docs/file-type-support.md)
+
 ## Release Verification
 
 Production release requires:
