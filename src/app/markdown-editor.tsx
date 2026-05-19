@@ -4,7 +4,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, foldGutter, indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState, StateEffect, StateField, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
 import { Decoration, type DecorationSet, drawSelection, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
 import { classHighlighter } from "@lezer/highlight";
 import { Vim, vim } from "@replit/codemirror-vim";
@@ -98,8 +98,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
     const view = viewRef.current;
     if (!view || view.state.doc.toString() === props.markdown) return;
     syncingFromPropsRef.current = true;
+    const { anchor, head } = view.state.selection.main;
+    const length = props.markdown.length;
     view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: props.markdown }
+      changes: { from: 0, to: view.state.doc.length, insert: props.markdown },
+      selection: { anchor: Math.min(anchor, length), head: Math.min(head, length) },
+      annotations: Transaction.addToHistory.of(false)
     });
     syncingFromPropsRef.current = false;
   }, [props.markdown]);

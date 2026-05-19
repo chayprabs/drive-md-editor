@@ -28,7 +28,7 @@ import { EmptyState } from "./empty-state";
 import { FindReplaceBar, type FindReplaceState } from "./find-replace-bar";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./markdown-editor";
 import { Onboarding } from "./onboarding";
-import { PreviewPane } from "./preview-pane";
+import { PreviewPane, type PreviewPaneHandle } from "./preview-pane";
 import { Sidebar } from "./sidebar";
 import { Toasts, useToasts } from "./toasts";
 import { ConflictModal } from "./conflict-modal";
@@ -90,6 +90,7 @@ function App(): React.ReactElement {
   const [pdfPrintRequest, setPdfPrintRequest] = useState(0);
   const { toasts, pushToast, dismissToast } = useToasts();
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
+  const previewRef = useRef<PreviewPaneHandle | null>(null);
   const overflowRef = useRef<HTMLDivElement | null>(null);
   const dirtyRef = useRef(false);
   const documentRef = useRef(document);
@@ -789,7 +790,12 @@ function App(): React.ReactElement {
             setBrowserFolderId(folderId);
             void updateSettings({ lastFolderId: folderId });
           }}
-          onJump={(line) => editorRef.current?.goToLine(line)}
+          onJump={(line) => {
+            const heading = outline.find((item) => item.line === line);
+            if (viewMode === "preview") setViewMode("split");
+            editorRef.current?.goToLine(line);
+            if (heading) previewRef.current?.scrollToHeading(heading.id);
+          }}
         />
         {showEmptyState ? (
           <EmptyState
@@ -823,6 +829,7 @@ function App(): React.ReactElement {
             )}
             {viewMode !== "editor" && (
               <PreviewPane
+                ref={previewRef}
                 markdown={document.markdown}
                 theme={settings.theme}
                 printRequestId={pdfPrintRequest}
@@ -841,7 +848,7 @@ function App(): React.ReactElement {
         <span>{stats.chars} chars</span>
         <span>{stats.reading} min read</span>
         <span>Ln {cursor.line}, Col {cursor.column}</span>
-        <span className={`save-state ${saveState}`}>{saveState}</span>
+        <span className={`save-state ${saveState}`} aria-live="polite">{saveState}</span>
       </footer>
       {conflict && (
         <ConflictModal
