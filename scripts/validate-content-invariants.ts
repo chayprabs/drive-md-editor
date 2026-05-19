@@ -13,7 +13,8 @@ expect(source.includes("window.requestAnimationFrame"), "Content script scans mu
 expect(source.includes("const startedAt = performance.now()"), "Content script must time row scans.");
 expect(source.includes("performance.now() - startedAt > 4"), "Content script must stop scans before the 5ms budget.");
 expect(source.includes("document.querySelectorAll<HTMLElement>(\"a[href], [data-id][aria-label], [data-tooltip]\")"), "Content script must cover Drive grid and list candidates.");
-expect(source.includes("markdownNamePattern.test(label)"), "Content script must filter candidates to Markdown names.");
+expect(source.includes("function isMarkdownLabel"), "Content script must centralize Markdown filename detection.");
+expect(source.includes("markdownNamePattern.test(normalized)"), "Content script must filter candidates to Markdown names.");
 expect(source.includes("void openInMarkDrive(fileId, extractDriveFolderIdFromUrl(location.href))"), "Content script clicks must open MarkDrive with file and folder context.");
 expect(source.includes("async function openInMarkDrive"), "Content script open action must handle runtime failures.");
 expect(source.includes("showMarkDriveNotice(`MarkDrive could not open this file."), "Content script open failures must show user feedback in Drive.");

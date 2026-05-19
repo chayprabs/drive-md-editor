@@ -761,25 +761,25 @@ function App(): React.ReactElement {
           <span>MarkDrive</span>
         </div>
         <div className="toolbar-group">
-          <button title="New file" onClick={newDocument}><FilePlus2 size={16} /></button>
-          <button title="Save" onClick={() => void saveCurrent("manual")}><Save size={16} /></button>
-          <button title="Bold" onClick={() => command("bold")}><Bold size={16} /></button>
-          <button title="Italic" onClick={() => command("italic")}><Italic size={16} /></button>
-          <button title="Link" onClick={() => command("link")}><Link size={16} /></button>
-          <button title="Find and replace" aria-pressed={findOpen} onClick={openFindReplace}><Search size={16} /></button>
+          <button title="New file" aria-label="New file" onClick={newDocument}><FilePlus2 size={16} /></button>
+          <button title="Save" aria-label="Save" onClick={() => void saveCurrent("manual")}><Save size={16} /></button>
+          <button title="Bold" aria-label="Bold" onClick={() => command("bold")}><Bold size={16} /></button>
+          <button title="Italic" aria-label="Italic" onClick={() => command("italic")}><Italic size={16} /></button>
+          <button title="Link" aria-label="Link" onClick={() => command("link")}><Link size={16} /></button>
+          <button title="Find and replace" aria-label="Find and replace" aria-pressed={findOpen} onClick={openFindReplace}><Search size={16} /></button>
         </div>
         <div className="toolbar-group">
-          <button title="Split view" aria-pressed={viewMode === "split"} onClick={() => setViewMode("split")}><Columns2 size={16} /></button>
-          <button title="Editor only" aria-pressed={viewMode === "editor"} onClick={() => setViewMode("editor")}><Braces size={16} /></button>
-          <button title="Preview only" aria-pressed={viewMode === "preview"} onClick={() => setViewMode("preview")}><Eye size={16} /></button>
-          <button title="Soft wrap" aria-pressed={settings.softWrap} onClick={() => void updateSettings({ softWrap: !settings.softWrap })}><WrapText size={16} /></button>
-          <button title={`Theme: ${settings.theme}`} onClick={() => void updateSettings({ theme: nextTheme(settings.theme) })}>{settings.theme === "light" || settings.theme === "solarized" ? <Sun size={16} /> : <Moon size={16} />}</button>
+          <button title="Split view" aria-label="Split view" aria-pressed={viewMode === "split"} onClick={() => setViewMode("split")}><Columns2 size={16} /></button>
+          <button title="Editor only" aria-label="Editor only" aria-pressed={viewMode === "editor"} onClick={() => setViewMode("editor")}><Braces size={16} /></button>
+          <button title="Preview only" aria-label="Preview only" aria-pressed={viewMode === "preview"} onClick={() => setViewMode("preview")}><Eye size={16} /></button>
+          <button title="Soft wrap" aria-label="Soft wrap" aria-pressed={settings.softWrap} onClick={() => void updateSettings({ softWrap: !settings.softWrap })}><WrapText size={16} /></button>
+          <button title={`Theme: ${settings.theme}`} aria-label={`Theme: ${settings.theme}`} onClick={() => void updateSettings({ theme: nextTheme(settings.theme) })}>{settings.theme === "light" || settings.theme === "solarized" ? <Sun size={16} /> : <Moon size={16} />}</button>
         </div>
         <div className="toolbar-group overflow">
-          <button title="Export Markdown" onClick={exportMarkdown}><Download size={16} /></button>
-          <button title="Export HTML" onClick={exportHtml}><Upload size={16} /></button>
-          <button title="Export PDF" onClick={exportPdf}><FileDown size={16} /></button>
-          <button title="Options" onClick={openOptionsPage}><Settings size={16} /></button>
+          <button title="Export Markdown" aria-label="Export Markdown" onClick={exportMarkdown}><Download size={16} /></button>
+          <button title="Export HTML" aria-label="Export HTML" onClick={exportHtml}><Upload size={16} /></button>
+          <button title="Export PDF" aria-label="Export PDF" onClick={exportPdf}><FileDown size={16} /></button>
+          <button title="Options" aria-label="Options" onClick={openOptionsPage}><Settings size={16} /></button>
         </div>
         <div className="toolbar-more" ref={overflowRef}>
           <button
