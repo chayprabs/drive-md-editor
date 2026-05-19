@@ -1,5 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { basicSetup, EditorView } from "codemirror";
+import { json } from "@codemirror/lang-json";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, foldGutter, indentOnInput, syntaxHighlighting } from "@codemirror/language";
@@ -8,6 +9,7 @@ import { Compartment, EditorState, StateEffect, StateField, Transaction, type Ex
 import { Decoration, type DecorationSet, drawSelection, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
 import { classHighlighter } from "@lezer/highlight";
 import { Vim, vim } from "@replit/codemirror-vim";
+import type { MarkDriveFileKind } from "../shared/file-types";
 import { collectSearchMatches, createSearchPattern, replaceMatches, type SearchOptions } from "../shared/search";
 
 export interface FindResult {
@@ -26,6 +28,7 @@ export interface MarkdownEditorHandle {
 
 interface Props {
   markdown: string;
+  documentMode: MarkDriveFileKind;
   vimMode: boolean;
   softWrap: boolean;
   searchHighlight: SearchOptions | null;
@@ -42,6 +45,7 @@ interface Props {
 
 const wrapCompartment = new Compartment();
 const vimCompartment = new Compartment();
+const languageCompartment = new Compartment();
 const setSearchHighlight = StateEffect.define<SearchOptions | null>();
 const searchHighlightField = StateField.define<DecorationSet>({
   create() {
@@ -65,6 +69,18 @@ const searchHighlightField = StateField.define<DecorationSet>({
 });
 let activeVimSave: (() => void) | null = null;
 Vim.defineEx("write", "w", () => activeVimSave?.());
+
+function languageExtension(mode: MarkDriveFileKind): Extension {
+  if (mode === "json") return json();
+  if (mode === "text") return [];
+  return markdown({ base: markdownLanguage });
+}
+
+function editorAriaLabel(mode: MarkDriveFileKind): string {
+  if (mode === "json") return "JSON source";
+  if (mode === "text") return "Plain text source";
+  return "Markdown source";
+}
 
 export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(props, ref) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -114,10 +130,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
     view.dispatch({
       effects: [
         wrapCompartment.reconfigure(props.softWrap ? EditorView.lineWrapping : []),
-        vimCompartment.reconfigure(props.vimMode ? vim() : [])
+        vimCompartment.reconfigure(props.vimMode ? vim() : []),
+        languageCompartment.reconfigure(languageExtension(props.documentMode))
       ]
     });
-  }, [props.softWrap, props.vimMode]);
+  }, [props.softWrap, props.vimMode, props.documentMode]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -127,6 +144,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
 
   useImperativeHandle(ref, () => ({
     formatSelection(kind) {
+      if (propsRef.current.documentMode !== "markdown") return;
       const view = viewRef.current;
       if (!view) return;
       const selection = view.state.selection.main;
@@ -188,7 +206,15 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
     }
   }), []);
 
-  return <div className="editor-host" ref={hostRef} role="textbox" aria-label="Markdown source" aria-multiline="true" />;
+  return (
+    <div
+      className="editor-host"
+      ref={hostRef}
+      role="textbox"
+      aria-label={editorAriaLabel(props.documentMode)}
+      aria-multiline="true"
+    />
+  );
 });
 
 function editorExtensions(getProps: () => Props, isSyncingFromProps: () => boolean, activateVimSave: () => void): Extension[] {
@@ -203,7 +229,7 @@ function editorExtensions(getProps: () => Props, isSyncingFromProps: () => boole
     bracketMatching(),
     indentOnInput(),
     syntaxHighlighting(classHighlighter),
-    markdown({ base: markdownLanguage }),
+    languageCompartment.of(languageExtension(getProps().documentMode)),
     wrapCompartment.of(getProps().softWrap ? EditorView.lineWrapping : []),
     vimCompartment.of(getProps().vimMode ? vim() : []),
     keymap.of([
@@ -217,6 +243,7 @@ function editorExtensions(getProps: () => Props, isSyncingFromProps: () => boole
       {
         key: "Mod-b",
         run(view) {
+          if (getProps().documentMode !== "markdown") return false;
           format(view, "**", "bold");
           return true;
         }
@@ -224,6 +251,7 @@ function editorExtensions(getProps: () => Props, isSyncingFromProps: () => boole
       {
         key: "Mod-i",
         run(view) {
+          if (getProps().documentMode !== "markdown") return false;
           format(view, "*", "italic");
           return true;
         }
@@ -231,6 +259,7 @@ function editorExtensions(getProps: () => Props, isSyncingFromProps: () => boole
       {
         key: "Mod-k",
         run(view) {
+          if (getProps().documentMode !== "markdown") return false;
           const selection = view.state.selection.main;
           const selected = view.state.sliceDoc(selection.from, selection.to) || "link";
           view.dispatch({ changes: { from: selection.from, to: selection.to, insert: `[${selected}](https://)` } });
@@ -240,6 +269,7 @@ function editorExtensions(getProps: () => Props, isSyncingFromProps: () => boole
       {
         key: "Mod-\\",
         run() {
+          if (getProps().documentMode !== "markdown") return false;
           getProps().onToggleView();
           return true;
         }
@@ -288,6 +318,7 @@ function editorExtensions(getProps: () => Props, isSyncingFromProps: () => boole
         return false;
       },
       paste(event) {
+        if (getProps().documentMode !== "markdown") return false;
         const view = viewRefFromEvent(event);
         const files = [...(event.clipboardData?.files ?? [])].filter((file) => file.type.startsWith("image/"));
         if (files.length > 0) {
@@ -313,6 +344,7 @@ function editorExtensions(getProps: () => Props, isSyncingFromProps: () => boole
         return false;
       },
       drop(event) {
+        if (getProps().documentMode !== "markdown") return false;
         const files = [...(event.dataTransfer?.files ?? [])].filter((file) => file.type.startsWith("image/"));
         if (files.length === 0) return false;
         event.preventDefault();
