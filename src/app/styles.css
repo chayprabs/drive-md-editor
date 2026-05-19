@@ -568,6 +568,11 @@ button[aria-pressed="true"] {
   font-family: "JetBrains Mono", ui-monospace, monospace !important;
 }
 
+.cm-searchMatch {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 2px;
+}
+
 .preview-pane {
   padding: 28px clamp(18px, 4vw, 54px);
   font-family: Lora, Georgia, serif;

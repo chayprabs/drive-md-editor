@@ -110,6 +110,7 @@ function App(): React.ReactElement {
     };
   }, [document.markdown]);
   const findSummary = useMemo(() => summarizeSearch(document.markdown, findState), [document.markdown, findState]);
+  const [findMatchIndex, setFindMatchIndex] = useState(0);
   const safelySetRecents = useCallback(async (load: () => Promise<RecentFile[]>) => {
     try {
       setRecents(await load());
@@ -481,11 +482,13 @@ function App(): React.ReactElement {
   const openFindReplace = useCallback(() => {
     if (viewMode === "preview") setViewMode("split");
     setFindOpen(true);
+    setFindMatchIndex(0);
   }, [viewMode]);
 
   const findInEditor = useCallback((direction: "next" | "previous") => {
-    const matches = editorRef.current?.find(findState, direction) ?? 0;
-    if (findState.query && matches === 0) {
+    const result = editorRef.current?.find(findState, direction) ?? { total: 0, index: 0 };
+    setFindMatchIndex(result.index);
+    if (findState.query && result.total === 0) {
       pushToast({ tone: findSummary.invalid ? "danger" : "warning", title: findSummary.invalid ? "Invalid search pattern" : "No matches" });
     }
   }, [findState, findSummary.invalid, pushToast]);
@@ -636,6 +639,10 @@ function App(): React.ReactElement {
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
+      if (event.key === "Escape" && findOpen) {
+        setFindOpen(false);
+        return;
+      }
       if ((event.target as Element | null)?.closest(".cm-editor")) return;
       const mod = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
@@ -661,7 +668,7 @@ function App(): React.ReactElement {
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [openFindReplace, saveCurrent, toggleFullscreen]);
+  }, [findOpen, openFindReplace, saveCurrent, toggleFullscreen]);
 
   return (
     <main className="app-shell">
@@ -715,8 +722,11 @@ function App(): React.ReactElement {
         {findOpen ? (
           <FindReplaceBar
             state={findState}
-            summary={findSummary}
-            onState={setFindState}
+            summary={{ ...findSummary, index: findMatchIndex }}
+            onState={(next) => {
+              setFindState(next);
+              setFindMatchIndex(0);
+            }}
             onFind={findInEditor}
             onReplaceCurrent={replaceCurrent}
             onReplaceAll={replaceAllInEditor}
@@ -772,6 +782,7 @@ function App(): React.ReactElement {
                 markdown={document.markdown}
                 vimMode={settings.vimMode}
                 softWrap={settings.softWrap}
+                searchHighlight={findOpen && findState.query ? findState : null}
                 onChange={changeMarkdown}
                 onSave={() => void saveCurrent("manual")}
                 onVimSave={() => void saveCurrent("vim")}
