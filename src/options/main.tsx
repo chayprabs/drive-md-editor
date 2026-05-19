@@ -12,6 +12,10 @@ function Options(): React.ReactElement {
   const settingsRef = useRef<MarkDriveSettings>(defaultSettings);
 
   useEffect(() => {
+    document.documentElement.dataset.theme = settings.theme;
+  }, [settings.theme]);
+
+  useEffect(() => {
     void sendMessage({ type: "settings:get" }).then((response) => {
       if (response.ok && "settings" in response) {
         settingsRef.current = response.settings;

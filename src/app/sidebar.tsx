@@ -12,6 +12,7 @@ interface Props {
   frontmatter: FrontmatterFields;
   query: string;
   folderId: string | null;
+  activeFileId: string | null;
   onQuery(query: string): void;
   onFrontmatter(fields: FrontmatterFields): void;
   onOpenFile(fileId: string): void;
@@ -160,7 +161,8 @@ function DriveBrowser(props: Props): React.ReactElement {
     }
   }
 
-  async function trashFile(fileId: string): Promise<void> {
+  async function trashFile(fileId: string, fileName: string): Promise<void> {
+    if (!window.confirm(`Move "${fileName}" to trash?`)) return;
     if (!beginDriveAction()) return;
     try {
       const response = await sendMessage({ type: "drive:trash-file", fileId });
@@ -228,8 +230,9 @@ function DriveBrowser(props: Props): React.ReactElement {
       </div>
       {error ? <p className="inline-error">{error}</p> : null}
       <div className="file-list" aria-busy={busy || actionBusy}>
+        {!busy && files.length === 0 ? <p className="muted">No Markdown files in this folder.</p> : null}
         {files.map((file) => (
-          <div className="file-row" key={file.id}>
+          <div className={`file-row${props.activeFileId === file.id ? " active" : ""}`} key={file.id}>
             {renaming?.id === file.id ? (
               <input
                 className="rename-input"
@@ -243,7 +246,7 @@ function DriveBrowser(props: Props): React.ReactElement {
                 }}
               />
             ) : (
-              <button onClick={() => props.onOpenFile(file.id)}>
+              <button onClick={() => props.onOpenFile(file.id)} aria-current={props.activeFileId === file.id ? "true" : undefined}>
                 <FileText size={14} />
                 <span>{file.name}</span>
               </button>
@@ -256,7 +259,7 @@ function DriveBrowser(props: Props): React.ReactElement {
             {renaming?.id === file.id ? (
               <button title="Cancel rename" disabled={actionBusy} onClick={() => setRenaming(null)}><X size={14} /></button>
             ) : (
-              <button title="Trash file" disabled={actionBusy} onClick={() => void trashFile(file.id)}>
+              <button title="Trash file" disabled={actionBusy} onClick={() => void trashFile(file.id, file.name)}>
                 <Trash2 size={14} />
               </button>
             )}

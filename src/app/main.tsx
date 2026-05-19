@@ -216,7 +216,14 @@ function App(): React.ReactElement {
     }
   }, []);
 
+  const confirmLeaveDocument = useCallback((): boolean => {
+    if (!dirtyRef.current) return true;
+    return window.confirm("You have unsaved changes. Discard them and continue?");
+  }, []);
+
   const openFile = useCallback(async (fileId: string) => {
+    if (documentRef.current.fileId === fileId) return;
+    if (!confirmLeaveDocument()) return;
     let response: Awaited<ReturnType<typeof sendMessage>>;
     try {
       response = await sendMessage({ type: "drive:get-file", fileId });
@@ -247,7 +254,7 @@ function App(): React.ReactElement {
     setShowEmptyState(false);
     dirtyRef.current = false;
     setSaveState("idle");
-  }, [pushToast, safelySetRecents, showDriveIssue]);
+  }, [confirmLeaveDocument, pushToast, safelySetRecents, showDriveIssue]);
 
   const saveCurrent = useCallback(async (
     source: "manual" | "autosave" | "vim" = "manual",
@@ -510,6 +517,7 @@ function App(): React.ReactElement {
   }, [findState, pushToast]);
 
   const newDocument = useCallback(() => {
+    if (!confirmLeaveDocument()) return;
     setDocument({
       fileId: null,
       name: "Untitled.md",
@@ -521,7 +529,7 @@ function App(): React.ReactElement {
     dirtyRef.current = false;
     setSaveState("idle");
     setShowEmptyState(false);
-  }, [browserFolderId]);
+  }, [browserFolderId, confirmLeaveDocument]);
 
   const importPaste = useCallback((html: string) => {
     try {
@@ -747,6 +755,7 @@ function App(): React.ReactElement {
           frontmatter={frontmatter}
           query={query}
           folderId={browserFolderId}
+          activeFileId={document.fileId}
           onQuery={setQuery}
           onFrontmatter={updateFrontmatter}
           onOpenFile={(fileId) => void openFile(fileId)}
