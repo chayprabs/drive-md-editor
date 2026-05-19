@@ -1,12 +1,12 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { includesAll, readSource } from "./invariant-helpers";
 
 const root = resolve(import.meta.dirname, "..");
-const editor = await readFile(resolve(root, "src/app/markdown-editor.tsx"), "utf8");
-const app = await readFile(resolve(root, "src/app/main.tsx"), "utf8");
-const driveApi = await readFile(resolve(root, "src/background/drive-api.ts"), "utf8");
-const background = await readFile(resolve(root, "src/background/index.ts"), "utf8");
-const messages = await readFile(resolve(root, "src/shared/messages.ts"), "utf8");
+const editor = await readSource(resolve(root, "src/app/markdown-editor.tsx"));
+const app = await readSource(resolve(root, "src/app/main.tsx"));
+const driveApi = await readSource(resolve(root, "src/background/drive-api.ts"));
+const background = await readSource(resolve(root, "src/background/index.ts"));
+const messages = await readSource(resolve(root, "src/shared/messages.ts"));
 const failures: string[] = [];
 
 expect(editor.includes("event.clipboardData?.files"), "Editor paste handler must inspect clipboard files.");
@@ -32,7 +32,7 @@ expect(app.includes("folderId: document.folderId"), "Image upload must preserve 
 expect(app.includes("editorRef.current?.insertText(`\\n${response.imageMarkdown}\\n`)"), "Uploaded image references must be inserted into the editor.");
 expect(app.includes("pushToast({ tone: \"success\", title: \"Image uploaded\" })"), "Successful image uploads must show feedback.");
 expect(app.includes("pushToast({ tone: \"danger\", title: \"Image upload failed\""), "Image upload failures must show feedback.");
-expect(app.includes("} catch (failure) {\n        pushToast({ tone: \"danger\", title: \"Image upload failed\", detail: describeUnknownError(failure) });"), "Image upload runtime failures must show user feedback.");
+expect(includesAll(app, ["} catch (failure) {", "pushToast({ tone: \"danger\", title: \"Image upload failed\", detail: describeUnknownError(failure) });"]), "Image upload runtime failures must show user feedback.");
 
 expect(messages.includes("{ type: \"drive:upload-image\"; name: string; mimeType: string; dataUrl: string; folderId: string | null }"), "Message contract must include image upload requests.");
 expect(messages.includes("{ ok: true; imageMarkdown: string }"), "Message contract must include image markdown responses.");
