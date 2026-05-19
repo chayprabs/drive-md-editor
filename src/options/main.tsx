@@ -29,6 +29,20 @@ function Options(): React.ReactElement {
     });
   }, []);
 
+  useEffect(() => {
+    const syncSettings = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+      if (areaName !== "local" || !changes["markdrive.settings"]?.newValue) return;
+      void sendMessage({ type: "settings:get" }).then((response) => {
+        if (response.ok && "settings" in response) {
+          settingsRef.current = response.settings;
+          setSettings(response.settings);
+        }
+      });
+    };
+    chrome.storage.onChanged.addListener(syncSettings);
+    return () => chrome.storage.onChanged.removeListener(syncSettings);
+  }, []);
+
   async function update(update: Partial<MarkDriveSettings>): Promise<void> {
     const previous = settingsRef.current;
     const next = { ...settingsRef.current, ...update };

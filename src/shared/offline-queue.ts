@@ -2,6 +2,8 @@ import type { OpenDocument } from "./types";
 
 const storageKey = "markdrive.offlineQueue";
 const maxQueuedSaves = 25;
+export const offlineRetryAlarmName = "markdrive.offline-retry";
+export const maxOfflineRetryAttempts = 5;
 
 export interface QueuedSave {
   id: string;
@@ -24,7 +26,16 @@ export async function queueOfflineSave(document: OpenDocument): Promise<QueuedSa
   };
   const next = [item, ...queue.filter((entry) => entry.id !== id)].slice(0, maxQueuedSaves);
   await chrome.storage.local.set({ [storageKey]: next });
+  await scheduleOfflineRetry();
   return next;
+}
+
+export async function scheduleOfflineRetry(delayMinutes = 1): Promise<void> {
+  await chrome.alarms.create(offlineRetryAlarmName, { delayInMinutes: delayMinutes });
+}
+
+export async function clearOfflineRetryAlarm(): Promise<void> {
+  await chrome.alarms.clear(offlineRetryAlarmName);
 }
 
 function newDocumentQueueId(document: OpenDocument): string {
@@ -52,7 +63,9 @@ export async function markQueuedSaveAttempt(id: string): Promise<void> {
 
 export async function removeQueuedSave(id: string): Promise<void> {
   const queue = await loadOfflineQueue();
-  await chrome.storage.local.set({ [storageKey]: queue.filter((item) => item.id !== id) });
+  const next = queue.filter((item) => item.id !== id);
+  await chrome.storage.local.set({ [storageKey]: next });
+  if (next.length === 0) await clearOfflineRetryAlarm();
 }
 
 function isQueuedSave(value: unknown): value is QueuedSave {

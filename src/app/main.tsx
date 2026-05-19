@@ -96,6 +96,7 @@ function App(): React.ReactElement {
   const retryTimerRef = useRef<number | null>(null);
   const printRequestCounterRef = useRef(0);
   const pendingPrintRequestRef = useRef<number | null>(null);
+  const viewModeBeforePrintRef = useRef<ViewMode>("split");
   documentRef.current = document;
 
   const outline = useMemo(() => extractOutline(document.markdown), [document.markdown]);
@@ -150,6 +151,17 @@ function App(): React.ReactElement {
     const fileId = readQueryParam("fileId");
     if (fileId) void openFile(fileId);
   }, [pushToast, safelySetRecents]);
+
+  useEffect(() => {
+    const syncSettings = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+      if (areaName !== "local" || !changes["markdrive.settings"]?.newValue) return;
+      void sendMessage({ type: "settings:get" }).then((response) => {
+        if (response.ok && "settings" in response) setSettings(response.settings);
+      });
+    };
+    chrome.storage.onChanged.addListener(syncSettings);
+    return () => chrome.storage.onChanged.removeListener(syncSettings);
+  }, []);
 
   useEffect(() => {
     documentElement().dataset.theme = settings.theme;
@@ -576,6 +588,7 @@ function App(): React.ReactElement {
         ]);
         const html = buildSelfContainedHtml(document.name, document.markdown, hljs, highlightCss);
         downloadBlob(`${document.name.replace(/\.md$/i, "")}.html`, "text/html", html);
+        pushToast({ tone: "success", title: "Exported HTML", detail: `${document.name.replace(/\.md$/i, "")}.html` });
       } catch (error) {
         pushToast({ tone: "danger", title: "HTML export failed", detail: error instanceof Error ? error.message : "Unable to build the export." });
       }
@@ -585,6 +598,7 @@ function App(): React.ReactElement {
   const exportMarkdown = useCallback(() => {
     try {
       downloadBlob(document.name, "text/markdown", document.markdown);
+      pushToast({ tone: "success", title: "Exported Markdown", detail: document.name });
     } catch (failure) {
       pushToast({ tone: "danger", title: "Markdown export failed", detail: describeUnknownError(failure) });
     }
@@ -592,6 +606,7 @@ function App(): React.ReactElement {
 
   const exportPdf = useCallback(() => {
     try {
+      viewModeBeforePrintRef.current = viewMode;
       const requestId = printRequestCounterRef.current + 1;
       printRequestCounterRef.current = requestId;
       pendingPrintRequestRef.current = requestId;
@@ -601,14 +616,17 @@ function App(): React.ReactElement {
       pendingPrintRequestRef.current = null;
       pushToast({ tone: "danger", title: "PDF export failed", detail: describeUnknownError(failure) });
     }
-  }, [pushToast]);
+  }, [pushToast, viewMode]);
 
   const handlePdfPrintReady = useCallback((requestId: number) => {
     if (pendingPrintRequestRef.current !== requestId) return;
     pendingPrintRequestRef.current = null;
     window.requestAnimationFrame(() => {
       try {
+        const restoreViewMode = () => setViewMode(viewModeBeforePrintRef.current);
+        window.addEventListener("afterprint", restoreViewMode, { once: true });
         window.print();
+        pushToast({ tone: "success", title: "Print dialog opened", detail: "Choose Save as PDF in the print dialog." });
       } catch (failure) {
         pushToast({ tone: "danger", title: "PDF export failed", detail: describeUnknownError(failure) });
       }

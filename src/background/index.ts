@@ -14,6 +14,14 @@ import type { BackgroundRequest, BackgroundResponse } from "../shared/messages";
 import type { MarkDriveSettings } from "../shared/types";
 import { cleanDriveId, extractDriveFileIdFromUrl } from "../shared/drive-url";
 import { loadSettings, updateSettings } from "../shared/settings";
+import {
+  loadOfflineQueue,
+  markQueuedSaveAttempt,
+  maxOfflineRetryAttempts,
+  offlineRetryAlarmName,
+  removeQueuedSave,
+  scheduleOfflineRetry
+} from "../shared/offline-queue";
 
 const validSettingsKeys = new Set(["theme", "autosaveInterval", "vimMode", "softWrap", "lastFolderId", "onboardingComplete"]);
 const validSettingsThemes = new Set(["dark", "light", "dracula", "nord", "solarized"]);
@@ -52,6 +60,12 @@ async function initializeExtension(reason: chrome.runtime.InstalledDetails["reas
 chrome.runtime.onMessage.addListener((request: unknown, _sender, sendResponse) => {
   void handleMessage(request).then(sendResponse);
   return true;
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === offlineRetryAlarmName) {
+    void runBackgroundAction(flushOfflineQueue);
+  }
 });
 
 async function handleMessage(request: unknown): Promise<BackgroundResponse> {
@@ -248,4 +262,37 @@ function clearBackgroundFailure(): void {
     chrome.action.setBadgeText({ text: "" }),
     chrome.action.setTitle({ title: "MarkDrive" })
   ]).catch(() => undefined);
+}
+
+async function flushOfflineQueue(): Promise<void> {
+  const queue = await loadOfflineQueue();
+  if (queue.length === 0) return;
+
+  let token: string;
+  try {
+    token = await getAuthToken(false);
+  } catch {
+    await scheduleOfflineRetry();
+    return;
+  }
+
+  for (const item of queue) {
+    if (item.attempts >= maxOfflineRetryAttempts) continue;
+    await markQueuedSaveAttempt(item.id);
+    try {
+      if (item.document.fileId) {
+        await saveMarkdownFile(token, item.document.fileId, item.document.markdown, item.document.modifiedTime);
+      } else {
+        await createMarkdownFile(token, item.document.name, item.document.markdown, item.document.folderId);
+      }
+      await removeQueuedSave(item.id);
+    } catch (error) {
+      if (token && error instanceof DriveApiError && error.status === 401) await forgetAuthToken(token);
+      await scheduleOfflineRetry();
+      return;
+    }
+  }
+
+  const remaining = await loadOfflineQueue();
+  if (remaining.length > 0) await scheduleOfflineRetry();
 }
