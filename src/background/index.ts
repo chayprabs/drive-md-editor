@@ -43,6 +43,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
 
 async function initializeExtension(reason: chrome.runtime.InstalledDetails["reason"]): Promise<void> {
   await runBackgroundAction(async () => {
+    await flushOfflineQueue();
     await chrome.contextMenus.removeAll();
     chrome.contextMenus.create({
       id: "markdrive-open",
@@ -287,6 +288,7 @@ async function flushOfflineQueue(): Promise<void> {
       }
       await removeQueuedSave(item.id);
     } catch (error) {
+      if (error instanceof DriveApiError && error.status === 409) return;
       if (token && error instanceof DriveApiError && error.status === 401) await forgetAuthToken(token);
       await scheduleOfflineRetry();
       return;
@@ -294,5 +296,6 @@ async function flushOfflineQueue(): Promise<void> {
   }
 
   const remaining = await loadOfflineQueue();
-  if (remaining.length > 0) await scheduleOfflineRetry();
+  const retriable = remaining.filter((item) => item.attempts < maxOfflineRetryAttempts);
+  if (retriable.length > 0) await scheduleOfflineRetry();
 }
