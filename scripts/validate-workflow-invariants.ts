@@ -86,6 +86,7 @@ expect(sidebar.includes("pathResponse.ok ? unexpectedDriveResponse : pathRespons
 expect(sidebar.includes("if (requestId === loadRequestRef.current) setBusy(false)"), "Drive browser must clear busy state only for the latest load.");
 expect(sidebar.includes("type: \"drive:create-file\""), "Drive browser must create Markdown files.");
 expect(sidebar.includes("async function createFile()") && sidebar.includes("setError(describeUnknownError(failure))"), "Drive browser create failures must surface runtime errors.");
+expect(sidebar.includes("setFiles((current) => [") && sidebar.includes("created.fileId"), "Drive browser create must add the new file to the folder list.");
 expect(sidebar.includes("if (!beginDriveAction()) return;"), "Drive browser create, rename, trash, and expand actions must avoid double submission.");
 expect(sidebar.includes("setError(response.ok ? unexpectedDriveResponse : response.message)"), "Drive browser create/folder responses must reject malformed successes.");
 expect(app.includes("folderId: browserFolderId"), "New local documents must target the current Drive browser folder.");
@@ -99,6 +100,8 @@ expect(sidebar.includes("normalizeMarkdownFileName(name)"), "Drive browser must 
 expect(sidebar.includes("type: \"drive:trash-file\""), "Drive browser must trash files.");
 expect(sidebar.includes("async function trashFile") && sidebar.includes("void trashFile(file.id, file.name)"), "Drive browser trash failures must use a handled action.");
 expect(sidebar.includes("Move \"") && sidebar.includes("to trash?"), "Drive browser trash must confirm before deleting.");
+expect(sidebar.includes("onDriveFailure"), "Drive browser must route auth and rate-limit failures through the shared modal.");
+expect(sidebar.includes("reportDriveBrowserFailure"), "Drive browser must escalate handled Drive failures to the app shell.");
 expect(sidebar.includes("activeFileId"), "Drive browser must highlight the open file.");
 expect(sidebar.includes("async function toggleFolder") && sidebar.includes("finally {\n      setExpandingFolderId(null);\n      finishDriveAction();\n    }"), "Drive browser folder expansion failures must clear busy state.");
 expect(sidebar.includes("disabled={actionBusy}"), "Drive browser mutation controls must be disabled while actions are in flight.");
