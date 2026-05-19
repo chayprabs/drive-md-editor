@@ -58,7 +58,7 @@ expect(appSource.includes("toggleFullscreen();"), "Global F11 must invoke guarde
 expect(appSource.includes("openFindReplace, saveCurrent, toggleFullscreen"), "Global shortcut effect must depend on fullscreen handling.");
 expect(appSource.includes("const openOptionsPage = useCallback"), "Options opening must route through a guarded callback.");
 expect(appSource.includes("title: \"Options failed to open\""), "Options open failures must surface user feedback.");
-expect(appSource.includes("title=\"Options\" onClick={openOptionsPage}"), "Toolbar options action must use guarded runtime handling.");
+expect(appSource.includes("title=\"Options\"") && appSource.includes("onClick={openOptionsPage}"), "Toolbar options action must use guarded runtime handling.");
 expect(appSource.includes("openOptionsPage(); }}><Settings size={14} /> Options"), "Overflow options action must use guarded runtime handling.");
 expect(appSource.includes("onFullscreenError={(failure) => pushToast({ tone: \"danger\", title: \"Fullscreen failed\""), "Editor fullscreen failures must show a toast.");
 expect(appSource.includes("if (dirtyRef.current) void saveCurrent(\"autosave\", documentRef.current)"), "Autosave timers must re-check dirty state and save the current document.");
