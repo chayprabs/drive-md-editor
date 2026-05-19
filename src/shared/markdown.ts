@@ -38,9 +38,11 @@ function createMarkdownIt(codeHighlighter?: CodeHighlighter): MarkdownIt {
     }
   });
 
+  md.renderer.rules.s_open = () => "<del>";
+  md.renderer.rules.s_close = () => "</del>";
+
   md.use(footnote)
     .use(emoji)
-    .use(strikethrough)
     .use(anchor, {
       permalink: anchor.permalink.headerLink()
     })
@@ -71,29 +73,6 @@ function createMarkdownIt(codeHighlighter?: CodeHighlighter): MarkdownIt {
   }
 
   return md;
-}
-
-function strikethrough(md: MarkdownIt): void {
-  md.inline.ruler.before("emphasis", "strikethrough", (state, silent) => {
-    const start = state.pos;
-    if (state.src.charCodeAt(start) !== 0x7e /* ~ */ || state.src.charCodeAt(start + 1) !== 0x7e) return false;
-    let scanned = start + 2;
-    while (scanned < state.posMax) {
-      if (state.src.charCodeAt(scanned) === 0x7e && state.src.charCodeAt(scanned + 1) === 0x7e) {
-        if (scanned === start + 2) return false;
-        if (silent) return true;
-        const tokenOpen = state.push("del_open", "del", 1);
-        tokenOpen.markup = "~~";
-        state.push("text", "", 0).content = state.src.slice(start + 2, scanned);
-        const tokenClose = state.push("del_close", "del", -1);
-        tokenClose.markup = "~~";
-        state.pos = scanned + 2;
-        return true;
-      }
-      scanned += 1;
-    }
-    return false;
-  });
 }
 
 const md = createMarkdownIt();

@@ -63,7 +63,7 @@ expect(!html.includes("<script>"), "Rendered markdown must not emit raw script t
 expect(html.includes("&lt;script&gt;alert(") && html.includes("nope") && html.includes(")&lt;/script&gt;"), "Rendered markdown must escape raw HTML.");
 expect(html.includes("href=\"https://example.com/docs\"") && html.includes("target=\"_blank\"") && html.includes("rel=\"noopener noreferrer\""), "Rendered external links must open safely outside the extension tab.");
 expect(html.includes("href=\"#visible-title\"") && !html.includes("href=\"#visible-title\" target=\"_blank\""), "Rendered local anchors must stay in the extension tab.");
-expect((html.includes("<del>") || html.includes("<s>")) && html.includes("removed text"), "Rendered markdown must include GFM strikethrough.");
+expect(html.includes("<del>") && html.includes("removed text"), "Rendered markdown must include GFM strikethrough.");
 
 const rewritten = writeFrontmatter(markdown, {
   title: "Updated",
