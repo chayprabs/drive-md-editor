@@ -35,7 +35,13 @@ import { ConflictModal } from "./conflict-modal";
 import { sendMessage } from "../shared/messages";
 import { markdownWithoutFrontmatter, readFrontmatter, writeFrontmatter } from "../shared/frontmatter";
 import { extractOutline, readingTimeMinutes, renderMarkdown, type CodeHighlighter } from "../shared/markdown";
-import { loadOfflineQueue, markQueuedSaveAttempt, queueOfflineSave, removeQueuedSave } from "../shared/offline-queue";
+import {
+  loadOfflineQueue,
+  markQueuedSaveAttempt,
+  maxOfflineRetryAttempts,
+  queueOfflineSave,
+  removeQueuedSave
+} from "../shared/offline-queue";
 import { loadRecents, rememberDocument, rememberDriveFile } from "../shared/recents";
 import { defaultSettings, saveSettings } from "../shared/settings";
 import { summarizeSearch } from "../shared/search";
@@ -97,8 +103,74 @@ function App(): React.ReactElement {
   const retryTimerRef = useRef<number | null>(null);
   const printRequestCounterRef = useRef(0);
   const pendingPrintRequestRef = useRef<number | null>(null);
+  const printRestoreTimerRef = useRef<number | null>(null);
   const viewModeBeforePrintRef = useRef<ViewMode>("split");
+  const driveIssueRetryRef = useRef<() => void>(() => undefined);
+  const openFileRef = useRef<(fileId: string) => Promise<void>>(async () => undefined);
+  const saveCurrentRef = useRef<(source?: "manual" | "autosave" | "vim", target?: OpenDocument) => Promise<void>>(async () => undefined);
   documentRef.current = document;
+
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
+
+  const handleDriveFailure = useCallback((
+    status: number | undefined,
+    message: string,
+    retryAfterMs?: number,
+    retryAction?: () => void
+  ) => {
+    driveIssueRetryRef.current = retryAction ?? (() => void saveCurrentRef.current("manual"));
+    if (status === 401) {
+      setDriveIssue({ kind: "auth", message });
+      return;
+    }
+    if (status === 403) {
+      setDriveIssue({ kind: "permission", message });
+      return;
+    }
+    if (status === 404) {
+      setDriveIssue({ kind: "deleted", message });
+      return;
+    }
+    if (status === 429) {
+      const delay = retryAfterMs ?? 4000;
+      setDriveIssue({ kind: "rate-limit", message, retryAfterMs: delay });
+      clearRetryTimer();
+      driveIssueRetryRef.current = retryAction ?? (() => void saveCurrentRef.current("manual"));
+      retryTimerRef.current = retryAction
+        ? window.setTimeout(() => retryAction(), delay)
+        : window.setTimeout(() => void saveCurrent("manual"), delay);
+    }
+  }, [clearRetryTimer]);
+
+  const showDriveIssue = useCallback((
+    status: number | undefined,
+    message: string,
+    retryAfterMs?: number,
+    retryAction?: () => void
+  ) => {
+    handleDriveFailure(status, message, retryAfterMs, retryAction);
+  }, [handleDriveFailure]);
+
+  const schedulePrintViewRestore = useCallback(() => {
+    if (printRestoreTimerRef.current) window.clearTimeout(printRestoreTimerRef.current);
+    let restored = false;
+    const restore = () => {
+      if (restored) return;
+      restored = true;
+      if (printRestoreTimerRef.current) {
+        window.clearTimeout(printRestoreTimerRef.current);
+        printRestoreTimerRef.current = null;
+      }
+      setViewMode(viewModeBeforePrintRef.current);
+    };
+    window.addEventListener("afterprint", restore, { once: true });
+    printRestoreTimerRef.current = window.setTimeout(restore, 30_000);
+  }, []);
 
   const outline = useMemo(() => extractOutline(document.markdown), [document.markdown]);
   const frontmatter = useMemo(() => readFrontmatter(document.markdown), [document.markdown]);
@@ -195,6 +267,17 @@ function App(): React.ReactElement {
   }, []);
 
   useEffect(() => {
+    if (!pendingPrintRequestRef.current) return;
+    const timer = window.setTimeout(() => {
+      if (!pendingPrintRequestRef.current) return;
+      pendingPrintRequestRef.current = null;
+      schedulePrintViewRestore();
+      pushToast({ tone: "warning", title: "Print export timed out", detail: "Preview layout was restored." });
+    }, 15_000);
+    return () => window.clearTimeout(timer);
+  }, [pdfPrintRequest, pushToast, schedulePrintViewRestore]);
+
+  useEffect(() => {
     if (settings.autosaveInterval === 0 || !dirtyRef.current) return;
     const timer = window.setTimeout(() => {
       if (dirtyRef.current) void saveCurrent("autosave", documentRef.current);
@@ -209,24 +292,6 @@ function App(): React.ReactElement {
     window.addEventListener("online", retry);
     if (navigator.onLine) retry();
     return () => window.removeEventListener("online", retry);
-  }, []);
-
-  const showDriveIssue = useCallback((status: number | undefined, message: string, retryAfterMs?: number) => {
-    if (status === 401) {
-      setDriveIssue({ kind: "auth", message });
-      return;
-    }
-    if (status === 403) {
-      setDriveIssue({ kind: "permission", message });
-      return;
-    }
-    if (status === 404) {
-      setDriveIssue({ kind: "deleted", message });
-      return;
-    }
-    if (status === 429) {
-      setDriveIssue({ kind: "rate-limit", message, retryAfterMs: retryAfterMs ?? 4000 });
-    }
   }, []);
 
   const confirmLeaveDocument = useCallback((): boolean => {
@@ -247,7 +312,7 @@ function App(): React.ReactElement {
     if (!response.ok) {
       const detail = describeDriveError(response.status, response.message);
       pushToast({ tone: "danger", title: "Could not open file", detail });
-      showDriveIssue(response.status, detail, response.retryAfterMs);
+      showDriveIssue(response.status, detail, response.retryAfterMs, () => void openFileRef.current(fileId));
       return;
     }
     if (!("file" in response)) {
@@ -267,7 +332,7 @@ function App(): React.ReactElement {
     setShowEmptyState(false);
     dirtyRef.current = false;
     setSaveState("idle");
-  }, [confirmLeaveDocument, pushToast, safelySetRecents, showDriveIssue]);
+  }, [confirmLeaveDocument, handleDriveFailure, pushToast, safelySetRecents]);
 
   const saveCurrent = useCallback(async (
     source: "manual" | "autosave" | "vim" = "manual",
@@ -365,7 +430,7 @@ function App(): React.ReactElement {
       pushToast({ tone: "danger", title: "Save failed", detail });
       handleDriveFailure(response.status, detail, response.retryAfterMs);
     }
-  }, [document, pushToast, safelyQueueOfflineSave, safelySetRecents]);
+  }, [handleDriveFailure, pushToast, safelyQueueOfflineSave, safelySetRecents]);
 
   const retryOfflineQueue = useCallback(async () => {
     if (!navigator.onLine) return;
@@ -378,7 +443,17 @@ function App(): React.ReactElement {
     }
     if (queue.length === 0) return;
 
-    for (const item of queue) {
+    const retriable = queue.filter((item) => item.attempts < maxOfflineRetryAttempts);
+    if (retriable.length === 0) {
+      pushToast({
+        tone: "danger",
+        title: "Queued saves need attention",
+        detail: `${queue.length} local save${queue.length === 1 ? "" : "s"} could not sync after ${maxOfflineRetryAttempts} attempts.`
+      });
+      return;
+    }
+
+    for (const item of retriable) {
       try {
         await markQueuedSaveAttempt(item.id);
       } catch (failure) {
@@ -450,27 +525,14 @@ function App(): React.ReactElement {
         break;
       }
     }
-  }, [pushToast, safelySetRecents]);
+  }, [handleDriveFailure, pushToast, safelySetRecents]);
 
-  const handleDriveFailure = useCallback((status: number | undefined, message: string, retryAfterMs?: number) => {
-    if (status === 401) {
-      setDriveIssue({ kind: "auth", message });
-      return;
-    }
-    if (status === 403) {
-      setDriveIssue({ kind: "permission", message });
-      return;
-    }
-    if (status === 404) {
-      setDriveIssue({ kind: "deleted", message });
-      return;
-    }
-    if (status === 429) {
-      const delay = retryAfterMs ?? 4000;
-      setDriveIssue({ kind: "rate-limit", message, retryAfterMs: delay });
-      if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = window.setTimeout(() => void saveCurrent("manual"), delay);
-    }
+  useEffect(() => {
+    openFileRef.current = openFile;
+  }, [openFile]);
+
+  useEffect(() => {
+    saveCurrentRef.current = saveCurrent;
   }, [saveCurrent]);
 
   const changeMarkdown = useCallback((markdown: string) => {
@@ -583,18 +645,19 @@ function App(): React.ReactElement {
   const exportHtml = useCallback(() => {
     void (async () => {
       try {
+        const highlightTheme = settings.theme === "light" || settings.theme === "solarized" ? "github" : "github-dark";
         const [{ default: hljs }, { default: highlightCss }] = await Promise.all([
           import("./highlight-languages"),
-          import("highlight.js/styles/github-dark.css?inline")
+          import(`highlight.js/styles/${highlightTheme}.css?inline`)
         ]);
-        const html = buildSelfContainedHtml(document.name, document.markdown, hljs, highlightCss);
+        const html = buildSelfContainedHtml(document.name, document.markdown, hljs, highlightCss, settings.theme);
         downloadBlob(`${document.name.replace(/\.md$/i, "")}.html`, "text/html", html);
         pushToast({ tone: "success", title: "Exported HTML", detail: `${document.name.replace(/\.md$/i, "")}.html` });
       } catch (error) {
         pushToast({ tone: "danger", title: "HTML export failed", detail: error instanceof Error ? error.message : "Unable to build the export." });
       }
     })();
-  }, [document.markdown, document.name, pushToast]);
+  }, [document.markdown, document.name, pushToast, settings.theme]);
 
   const exportMarkdown = useCallback(() => {
     try {
@@ -624,22 +687,15 @@ function App(): React.ReactElement {
     pendingPrintRequestRef.current = null;
     window.requestAnimationFrame(() => {
       try {
-        const restoreViewMode = () => setViewMode(viewModeBeforePrintRef.current);
-        window.addEventListener("afterprint", restoreViewMode, { once: true });
+        schedulePrintViewRestore();
         window.print();
         pushToast({ tone: "success", title: "Print dialog opened", detail: "Choose Save as PDF in the print dialog." });
       } catch (failure) {
+        setViewMode(viewModeBeforePrintRef.current);
         pushToast({ tone: "danger", title: "PDF export failed", detail: describeUnknownError(failure) });
       }
     });
-  }, [pushToast]);
-
-  const clearRetryTimer = useCallback(() => {
-    if (retryTimerRef.current) {
-      window.clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
-  }, []);
+  }, [pushToast, schedulePrintViewRestore]);
 
   const toggleFullscreen = useCallback(() => {
     void (async () => {
@@ -790,6 +846,7 @@ function App(): React.ReactElement {
             setBrowserFolderId(folderId);
             void updateSettings({ lastFolderId: folderId });
           }}
+          onDriveFailure={(status, message, retryAfterMs) => handleDriveFailure(status, message, retryAfterMs)}
           onJump={(line) => {
             const heading = outline.find((item) => item.line === line);
             if (viewMode === "preview") setViewMode("split");
@@ -891,12 +948,12 @@ function App(): React.ReactElement {
           onRetry={() => {
             clearRetryTimer();
             setDriveIssue(null);
-            void saveCurrent("manual");
+            void driveIssueRetryRef.current();
           }}
           onReauth={() => {
             setDriveIssue(null);
             void sendMessage({ type: "auth:get-token", interactive: true }).then((response) => {
-              if (response.ok) void saveCurrent("manual");
+              if (response.ok) void driveIssueRetryRef.current();
               else pushToast({ tone: "danger", title: "Authentication failed", detail: response.message });
             }).catch((failure: unknown) => {
               pushToast({ tone: "danger", title: "Authentication failed", detail: describeUnknownError(failure) });
@@ -962,10 +1019,17 @@ function fallbackDownloadName(name: string): string {
   return /\.html$/i.test(name) ? "MarkDrive-export.html" : "MarkDrive-export.md";
 }
 
-function buildSelfContainedHtml(name: string, markdown: string, codeHighlighter?: CodeHighlighter, highlightCss = ""): string {
+function buildSelfContainedHtml(
+  name: string,
+  markdown: string,
+  codeHighlighter?: CodeHighlighter,
+  highlightCss = "",
+  theme: ThemeName = "light"
+): string {
   const frontmatter = readFrontmatter(markdown);
   const outline = extractOutline(markdown);
   const title = frontmatter.title || name.replace(/\.md$/i, "");
+  const pageTheme = exportPageTheme(theme);
   const toc = outline.length > 0
     ? `<nav class="toc"><h2>Contents</h2>${outline.map((item) => `<a style="margin-left:${(item.level - 1) * 12}px" href="#${escapeHtml(item.id)}">${escapeHtml(item.text)}</a>`).join("")}</nav>`
     : "";
@@ -976,12 +1040,13 @@ function buildSelfContainedHtml(name: string, markdown: string, codeHighlighter?
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>
-body{margin:0;padding:48px;max-width:860px;font:18px/1.7 Lora,Georgia,serif;color:#111827;background:#fff}
+body{margin:0;padding:48px;max-width:860px;font:18px/1.7 Lora,Georgia,serif;${pageTheme.body}}
 h1,h2,h3,h4,h5,h6{font-family:Geist,Arial,sans-serif;line-height:1.2}
-a{color:#0d9488}.toc{padding:16px 0;border-bottom:1px solid #d1d5db}.toc a{display:block}
-pre{overflow:auto;padding:14px;border:1px solid #d1d5db;border-radius:8px;background:#111827;color:#f9fafb}
+a{color:${pageTheme.accent}}.toc{padding:16px 0;border-bottom:1px solid ${pageTheme.border}}.toc a{display:block}
+pre{overflow:auto;padding:14px;border:1px solid ${pageTheme.border};border-radius:8px;${pageTheme.pre}}
 ${highlightCss}
-.frontmatter{margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #d1d5db;color:#4b5563}
+.frontmatter{margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid ${pageTheme.border};color:${pageTheme.muted}}
+.callout{margin:16px 0;padding:12px 16px;border-left:4px solid ${pageTheme.accent};background:${pageTheme.callout}}
 @page{margin:0.75in;@bottom-center{content:counter(page)}}
 </style>
 </head>
@@ -991,6 +1056,27 @@ ${toc}
 <article>${renderMarkdown(markdown, codeHighlighter)}</article>
 </body>
 </html>`;
+}
+
+function exportPageTheme(theme: ThemeName): { body: string; accent: string; border: string; muted: string; pre: string; callout: string } {
+  if (theme === "light" || theme === "solarized") {
+    return {
+      body: "color:#111827;background:#fff",
+      accent: "#0d9488",
+      border: "#d1d5db",
+      muted: "#4b5563",
+      pre: "background:#111827;color:#f9fafb",
+      callout: "#f0fdfa"
+    };
+  }
+  return {
+    body: "color:#e6edf3;background:#0d1117",
+    accent: "#2dd4bf",
+    border: "#30363d",
+    muted: "#8b949e",
+    pre: "background:#161b22;color:#e6edf3",
+    callout: "#132f2c"
+  };
 }
 
 function escapeHtml(value: string): string {
