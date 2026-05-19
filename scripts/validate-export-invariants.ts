@@ -1,15 +1,15 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { extractAtRule, readSource } from "./invariant-helpers";
 
 const root = resolve(import.meta.dirname, "..");
-const app = await readFile(resolve(root, "src/app/main.tsx"), "utf8");
-const preview = await readFile(resolve(root, "src/app/preview-pane.tsx"), "utf8");
-const css = await readFile(resolve(root, "src/app/styles.css"), "utf8");
+const app = await readSource(resolve(root, "src/app/main.tsx"));
+const preview = await readSource(resolve(root, "src/app/preview-pane.tsx"));
+const css = await readSource(resolve(root, "src/app/styles.css"));
 const failures: string[] = [];
 
-expect(app.includes("const exportMarkdown = useCallback"), "Markdown export action must exist.");
-expect(app.includes("downloadBlob(document.name, \"text/markdown\", document.markdown)"), "Markdown export must download the exact editor contents.");
-expect(app.includes("title: \"Markdown export failed\""), "Markdown export failures must show user feedback.");
+expect(app.includes("const exportMarkdown = useCallback"), "File export action must exist.");
+expect(app.includes("downloadBlob(document.name, mimeTypeForFileName(document.name), document.markdown)"), "File export must download the exact editor contents with the correct MIME type.");
+expect(app.includes("title: \"Markdown export failed\""), "File export failures must show user feedback.");
 expect(app.includes("anchor.download = sanitizeDownloadName(name)"), "Exports must sanitize unsafe local download filenames.");
 expect(app.includes("try {\n    anchor.href = url;"), "Exports must wrap synthetic download clicks for cleanup.");
 expect(app.includes("globalThis.document.body.append(anchor)"), "Exports must attach synthetic download links for browser compatibility.");
@@ -54,10 +54,10 @@ expect(app.includes("viewModeBeforePrintRef"), "PDF export must remember the pri
 expect(app.includes("afterprint"), "PDF export must restore the prior view mode after printing.");
 expect(app.includes("schedulePrintViewRestore"), "PDF export must restore view mode when print fails or times out.");
 expect(app.includes("title: \"PDF export failed\""), "PDF export failures must show user feedback.");
-expect(app.includes("title: \"Exported Markdown\""), "Markdown export successes must show user feedback.");
+expect(app.includes("title: \"Exported file\""), "File export successes must show user feedback.");
 expect(app.includes("title: \"Print dialog opened\""), "PDF export successes must show user feedback.");
 
-for (const label of ["Export Markdown", "Export HTML", "Export PDF"]) {
+for (const label of ["Export file", "Export HTML", "Export PDF"]) {
   expect(app.includes(`title="${label}"`) || app.includes(`> ${label}<`), `Toolbar must expose ${label}.`);
   expect(app.includes(`role="menuitem"`) && app.includes(label), `Overflow menu must expose ${label}.`);
 }
@@ -67,7 +67,7 @@ expect(preview.includes("className=\"print-toc\""), "Preview must render a print
 expect(preview.includes("printFrontmatter"), "Preview print header must use frontmatter.");
 expect(preview.includes("printOutline"), "Preview print ToC must use outline headings.");
 
-const printCss = extractAtRule("@media print");
+const printCss = extractAtRule(css, "@media print");
 expect(Boolean(printCss), "Print stylesheet must exist.");
 expect(printCss?.includes(".toolbar,") && printCss.includes("display: none"), "Print CSS must hide toolbar chrome.");
 expect(printCss?.includes(".editor-host") && printCss.includes("display: none"), "Print CSS must hide the editor.");
@@ -81,20 +81,6 @@ if (failures.length > 0) {
 }
 
 console.log("Export invariants passed.");
-
-function extractAtRule(rule: string): string | null {
-  const start = css.indexOf(rule);
-  if (start === -1) return null;
-  const bodyStart = css.indexOf("{", start);
-  if (bodyStart === -1) return null;
-  let depth = 0;
-  for (let index = bodyStart; index < css.length; index += 1) {
-    if (css[index] === "{") depth += 1;
-    if (css[index] === "}") depth -= 1;
-    if (depth === 0) return css.slice(bodyStart + 1, index);
-  }
-  return null;
-}
 
 function expect(condition: boolean | undefined, message: string): void {
   if (!condition) failures.push(message);

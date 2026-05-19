@@ -1,3 +1,10 @@
+import { fileKindFromName, normalizeSupportedFileName, type MarkDriveFileKind } from "./file-types";
+
+export function normalizeDriveFileName(name: string, kind?: MarkDriveFileKind): string {
+  const resolvedKind = kind ?? fileKindFromName(name) ?? "markdown";
+  return normalizeSupportedFileName(name, resolvedKind);
+}
+
 export function normalizeMarkdownFileName(name: string): string {
   const cleaned = name
     .replace(/[\x00-\x1f<>:"|?*]+/g, "-")

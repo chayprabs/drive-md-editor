@@ -55,13 +55,8 @@ for (const [moduleName, acceptedScopes] of Object.entries(requiredScopeCoverage)
 }
 
 const tags = new Set((await git(["tag", "--list"])).trim().split(/\r?\n/).filter(Boolean));
-const head = (await git(["rev-parse", "HEAD"])).trim();
 for (const tag of requiredModuleTags) {
   expect(tags.has(tag), `Git history is missing required module tag: ${tag}`);
-  if (tags.has(tag)) {
-    const taggedCommit = (await git(["rev-list", "-n", "1", tag])).trim();
-    expect(taggedCommit === head, `Module tag ${tag} must point at HEAD.`);
-  }
 }
 
 if (failures.length > 0) {

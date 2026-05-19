@@ -1,5 +1,6 @@
 import type { DriveFile, DriveFolder, DriveFolderPathItem, OpenDocument } from "../shared/types";
-import { normalizeDriveAssetName, normalizeMarkdownFileName } from "../shared/drive-names";
+import { driveNameContainsClauses, isSupportedFileName, mimeTypeForFileName } from "../shared/file-types";
+import { normalizeDriveAssetName, normalizeDriveFileName } from "../shared/drive-names";
 import { isDriveResourceId } from "../shared/drive-url";
 
 const apiBase = "https://www.googleapis.com/drive/v3";
@@ -72,7 +73,7 @@ export async function saveMarkdownFile(
     {
       method: "PATCH",
       body: markdown,
-      headers: { "Content-Type": "text/markdown; charset=utf-8" }
+      headers: { "Content-Type": mimeTypeForFileName(current.name) }
     }
   );
 
@@ -93,14 +94,16 @@ export async function createMarkdownFile(
   folderId: string | null
 ): Promise<OpenDocument> {
   assertOptionalDriveResourceId(folderId);
+  const normalizedName = normalizeDriveFileName(name);
+  const mimeType = mimeTypeForFileName(normalizedName);
   const metadata = {
-    name: normalizeMarkdownFileName(name),
-    mimeType: "text/markdown",
+    name: normalizedName,
+    mimeType,
     parents: folderId ? [folderId] : undefined
   };
   const form = new FormData();
   form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-  form.append("file", new Blob([markdown], { type: "text/markdown" }));
+  form.append("file", new Blob([markdown], { type: mimeType }));
 
   const created = await request<DriveFile>(
     token,
@@ -123,7 +126,8 @@ export async function createMarkdownFile(
 
 export async function listMarkdownFiles(token: string, folderId: string | null, query: string): Promise<DriveFile[]> {
   assertOptionalDriveResourceId(folderId);
-  const terms = ["trashed = false", `name contains ${driveQueryLiteral(".md")}`];
+  const extensionClauses = driveNameContainsClauses().join(" or ");
+  const terms = ["trashed = false", `(${extensionClauses})`];
   if (folderId) terms.push(`${driveQueryLiteral(folderId)} in parents`);
   if (query.trim()) terms.push(`name contains ${driveQueryLiteral(query.trim())}`);
 
@@ -134,7 +138,7 @@ export async function listMarkdownFiles(token: string, folderId: string | null, 
     pageSize: "50",
     fields: "nextPageToken,files(id,name,mimeType,modifiedTime,parents,webViewLink)"
   }));
-  return files.filter((file) => /\.md$/i.test(file.name));
+  return files.filter((file) => isSupportedFileName(file.name));
 }
 
 export async function listFolders(token: string, folderId: string | null): Promise<DriveFolder[]> {
@@ -177,7 +181,7 @@ export async function renameFile(token: string, fileId: string, name: string): P
   assertDriveResourceId(fileId);
   await request(token, `${apiBase}/files/${fileId}`, {
     method: "PATCH",
-    body: JSON.stringify({ name: normalizeMarkdownFileName(name) })
+    body: JSON.stringify({ name: normalizeDriveFileName(name) })
   });
 }
 

@@ -1,9 +1,9 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { readSource } from "./invariant-helpers";
 
 const root = resolve(import.meta.dirname, "..");
-const source = await readFile(resolve(root, "src/content/drive-interceptor.ts"), "utf8");
-const driveUrl = await readFile(resolve(root, "src/shared/drive-url.ts"), "utf8");
+const source = await readSource(resolve(root, "src/content/drive-interceptor.ts"));
+const driveUrl = await readSource(resolve(root, "src/shared/drive-url.ts"));
 const failures: string[] = [];
 
 expect(source.includes("document.addEventListener(\"click\""), "Content script must intercept Drive click events.");
@@ -13,8 +13,11 @@ expect(source.includes("window.requestAnimationFrame"), "Content script scans mu
 expect(source.includes("const startedAt = performance.now()"), "Content script must time row scans.");
 expect(source.includes("performance.now() - startedAt > 4"), "Content script must stop scans before the 5ms budget.");
 expect(source.includes("document.querySelectorAll<HTMLElement>(\"a[href], [data-id][aria-label], [data-tooltip]\")"), "Content script must cover Drive grid and list candidates.");
-expect(source.includes("function isMarkdownLabel"), "Content script must centralize Markdown filename detection.");
-expect(source.includes("markdownNamePattern.test(normalized)"), "Content script must filter candidates to Markdown names.");
+expect(source.includes("import { isSupportedFileName } from \"../shared/file-types\";"), "Content script must centralize supported filename detection.");
+expect(source.includes("function isSupportedDriveLabel"), "Content script must filter candidates to supported Drive file names.");
+expect(source.includes("data-markdrive-supported"), "Content script must mark supported rows with data-markdrive-supported.");
+expect(source.includes("isSupportedFileName(normalized)"), "Content script must filter candidates with shared file type helpers.");
+expect(source.includes("dataset.markdriveSupported = \"true\""), "Content script must mark supported Drive rows.");
 expect(source.includes("void openInMarkDrive(fileId, extractDriveFolderIdFromUrl(location.href))"), "Content script clicks must open MarkDrive with file and folder context.");
 expect(source.includes("async function openInMarkDrive"), "Content script open action must handle runtime failures.");
 expect(source.includes("showMarkDriveNotice(`MarkDrive could not open this file."), "Content script open failures must show user feedback in Drive.");

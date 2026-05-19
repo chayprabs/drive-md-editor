@@ -42,7 +42,7 @@ expect(app.includes("setDocument({ ...conflict.local, markdown: conflict.drive.m
 expect(app.includes("dirtyRef.current = false"), "Keep Drive must clear the dirty flag.");
 expect(app.includes("setSaveState(\"saved\")"), "Keep Drive must leave the document saved.");
 expect(app.includes("const copy = { ...conflict.local, fileId: null, modifiedTime: null"), "Save as Copy must create a new file target.");
-expect(app.includes("conflict.local.name.replace(/\\.md$/i, \" copy.md\")"), "Save as Copy must name the copy distinctly.");
+expect(app.includes("name: duplicateFileName(conflict.local.name)"), "Save as Copy must name the copy distinctly.");
 expect(app.includes("void saveCurrent(\"manual\", copy)"), "Save as Copy must save the copy.");
 expect(app.includes("setConflict(null)"), "All conflict actions must close the modal.");
 

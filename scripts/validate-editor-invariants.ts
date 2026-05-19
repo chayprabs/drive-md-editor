@@ -22,11 +22,18 @@ for (const extension of [
   "bracketMatching()",
   "indentOnInput()",
   "syntaxHighlighting(classHighlighter)",
-  "markdown({ base: markdownLanguage })",
+  "languageCompartment.of(languageExtension(getProps().documentMode))",
   "indentWithTab"
 ]) {
   expect(source.includes(extension), `Editor extension missing: ${extension}.`);
 }
+
+expect(source.includes("import { json } from \"@codemirror/lang-json\""), "Editor must import JSON language support.");
+expect(source.includes("documentMode: MarkDriveFileKind"), "Editor must accept a document mode prop.");
+expect(source.includes("const languageCompartment = new Compartment()"), "Editor language must be controlled by a compartment.");
+expect(source.includes("languageCompartment.reconfigure(languageExtension(props.documentMode))"), "Document mode changes must reconfigure the editor language.");
+expect(source.includes("if (getProps().documentMode !== \"markdown\") return false"), "Markdown-only shortcuts must be guarded by document mode.");
+expect(source.includes("editorAriaLabel(props.documentMode)"), "Editor must expose a mode-aware aria label.");
 
 expect(source.includes("wrapCompartment.of(getProps().softWrap ? EditorView.lineWrapping : [])"), "Soft wrap must be controlled by a settings compartment.");
 expect(source.includes("vimCompartment.of(getProps().vimMode ? vim() : [])"), "Vim mode must be controlled by a settings compartment.");
@@ -55,7 +62,7 @@ expect(appSource.includes("openFindReplace()"), "Global Ctrl+Shift+F must open f
 expect(appSource.includes("const toggleFullscreen = useCallback"), "Global F11 must route fullscreen through a guarded callback.");
 expect(appSource.includes("title: \"Fullscreen failed\""), "Fullscreen failures must surface user feedback.");
 expect(appSource.includes("toggleFullscreen();"), "Global F11 must invoke guarded fullscreen handling.");
-expect(appSource.includes("openFindReplace, saveCurrent, toggleFullscreen"), "Global shortcut effect must depend on fullscreen handling.");
+expect(appSource.includes("openFindReplace, previewEnabled, saveCurrent, toggleFullscreen"), "Global shortcut effect must depend on preview availability.");
 expect(appSource.includes("const openOptionsPage = useCallback"), "Options opening must route through a guarded callback.");
 expect(appSource.includes("title: \"Options failed to open\""), "Options open failures must surface user feedback.");
 expect(appSource.includes("title=\"Options\"") && appSource.includes("onClick={openOptionsPage}"), "Toolbar options action must use guarded runtime handling.");
