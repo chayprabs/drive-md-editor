@@ -209,6 +209,17 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.file-kind-badge {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .toolbar-group {
   display: flex;
   align-items: center;
@@ -867,6 +878,10 @@ button:disabled {
   flex-shrink: 0;
   font-weight: 600;
   text-transform: capitalize;
+}
+
+.json-status.invalid {
+  color: var(--danger);
 }
 
 .json-status.invalid {
