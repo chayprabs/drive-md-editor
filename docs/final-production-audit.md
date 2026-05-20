@@ -1,7 +1,7 @@
 # MarkDrive Final Production Readiness Audit
 
 **Branch:** `final/production-readiness-audit`  
-**Commit:** `ce380b05bba0eefc393d7db4b716722a720f4e50` (integration); audit report in follow-up commit  
+**Commit:** `0703a63` (`docs(release): add final production readiness audit report`)  
 **Audited:** 2026-05-20  
 **Auditor role:** Final integration owner / release auditor (evidence-based)
 
@@ -66,7 +66,7 @@ Updated editor/search **lint matchers** to match actual find-replace/toolbar mar
 
 ## 5. GitHub Actions status
 
-See CI run for branch `final/production-readiness-audit` after push of this document.
+**No GitHub Actions workflows** are defined in this repository (`.github/workflows` absent; GitHub API reports `total_count: 0`). Local `pnpm check` is the CI equivalent used for this audit.
 
 ## 6. `pnpm release:verify` result
 
