@@ -102,6 +102,7 @@ expect(background.includes("import { cleanDriveId, extractDriveFileIdFromUrl } f
 expect(background.includes("const cleanFileId = cleanDriveId(fileId);") && background.includes("const cleanFolderId = cleanDriveId(folderId);"), "Background editor URLs must normalize Drive ids before opening tabs.");
 expect(background.includes("const storedFileId = typeof target?.fileId === \"string\" ? cleanDriveId(target.fileId) : null;"), "Context menu session fallback must normalize stored file ids.");
 expect(background.includes("const storedFolderId = typeof target?.folderId === \"string\" ? cleanDriveId(target.folderId) : null;"), "Context menu session fallback must normalize stored folder ids.");
+expect(background.includes("throw new Error(\"MarkDrive could not determine which Drive file to open from this context.\")"), "Context menu fallback must fail clearly when no Drive file can be resolved.");
 expect(background.includes("record.type === \"drive:save-file\"") && background.includes("optionalDateString(record.previousModifiedTime)"), "Save requests must validate conflict metadata before use.");
 expect(background.includes("record.type === \"drive:upload-image\"") && background.includes("nonEmptyString(record.dataUrl)"), "Image upload requests must validate image payloads before use.");
 expect(background.includes("if (record.type === \"drive:get-file\") return nonEmptyString(record.fileId);"), "Open-file requests must reject blank Drive file ids.");
@@ -130,6 +131,7 @@ expect(queue.includes("chrome.storage.local.set({ [storageKey]: queue })"), "Off
 expect(queue.includes("attempts: existing?.attempts ?? 0"), "Offline queue must retain retry attempt counts.");
 expect(queue.includes("markQueuedSaveAttempt"), "Offline queue must record retry attempts.");
 expect(queue.includes("removeQueuedSave"), "Offline queue must remove synced saves.");
+expect(background.includes("chrome.runtime.onStartup.addListener"), "Background must flush offline saves when Chrome starts.");
 expect(background.includes("chrome.alarms.onAlarm.addListener"), "Background must retry offline saves on alarms.");
 expect(background.includes("flushOfflineQueue"), "Background must flush queued offline saves.");
 expect(background.includes("item.attempts >= maxOfflineRetryAttempts"), "Background offline flush must stop retrying exhausted saves.");

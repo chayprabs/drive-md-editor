@@ -24,6 +24,7 @@ const requiredPackages = [
   "react-dom",
   "codemirror",
   "@codemirror/commands",
+  "@codemirror/lang-json",
   "@codemirror/lang-markdown",
   "@codemirror/language",
   "@codemirror/search",

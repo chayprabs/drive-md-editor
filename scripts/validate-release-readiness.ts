@@ -47,6 +47,7 @@ const clientId = process.env.MARKDRIVE_OAUTH_CLIENT_ID?.trim();
 
 expect(Boolean(clientId) && /^[\w.-]+\.apps\.googleusercontent\.com$/.test(clientId ?? ""), "MARKDRIVE_OAUTH_CLIENT_ID must be set to the production Chrome Extension OAuth client id.");
 expect(clientId !== "markdrive-unconfigured.apps.googleusercontent.com", "MARKDRIVE_OAUTH_CLIENT_ID must not use the unconfigured development client id.");
+expect(!clientId?.includes("REPLACE-WITH"), "MARKDRIVE_OAUTH_CLIENT_ID must not use placeholder text.");
 
 const manifest = await readJson<ExtensionManifest>(resolve(root, "dist", "manifest.json"), "Run pnpm build with the production OAuth client id before release verification.");
 if (manifest) {
@@ -57,13 +58,20 @@ expect(existsSync(evidencePath), "release/live-drive-verification.json must exis
 const evidence = await readJson<LiveDriveEvidence>(evidencePath, "Create release/live-drive-verification.json after completing the live Drive verification checklist.");
 
 if (evidence) {
+  expect(!("_notice" in evidence), "Live verification evidence must not contain template notice fields.");
   expect(evidence.clientId === clientId, "Live verification evidence clientId must match MARKDRIVE_OAUTH_CLIENT_ID.");
+  expect(!evidence.clientId.includes("REPLACE-WITH"), "Live verification evidence clientId must not contain placeholder text.");
   expect(chromeExtensionId(evidence.extensionId), "Live verification evidence extensionId must be the loaded Chrome extension id.");
+  expect(evidence.extensionId !== "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "Live verification evidence extensionId must not use the template placeholder.");
   expect(emailLike(evidence.tester), "Live verification evidence tester must be an email-style owner identifier.");
+  expect(!isPlaceholderEmail(evidence.tester), "Live verification evidence tester must not use placeholder example addresses.");
   expect(browserWithVersion(evidence.browser), "Live verification evidence browser must include Chrome or Edge and a version.");
+  expect(evidence.browser !== "Chrome 0.0.0.0", "Live verification evidence browser must not use the template placeholder.");
   expect(emailLike(evidence.driveAccount), "Live verification evidence driveAccount must be the Google account email used for QA.");
+  expect(!isPlaceholderEmail(evidence.driveAccount), "Live verification evidence driveAccount must not use placeholder example addresses.");
   expect(validIsoDate(evidence.completedAt), "Live verification evidence completedAt must be an ISO timestamp.");
   expect(notFuture(evidence.completedAt), "Live verification evidence completedAt must not be in the future.");
+  expect(evidence.completedAt !== "1970-01-01T00:00:00.000Z", "Live verification evidence completedAt must not use the template placeholder.");
   expect(Array.isArray(evidence.checks), "Live verification evidence checks must be an array.");
   expect(evidence.checks?.length === requiredChecks.length, `Live verification evidence must include exactly ${requiredChecks.length} checks.`);
   const rootCompletedAt = Date.parse(evidence.completedAt);
@@ -81,6 +89,9 @@ if (evidence) {
     }
     expect(nonEmpty(check.evidence), `Live Drive check ${check.id} must include a local evidence file path.`);
     if (nonEmpty(check.evidence)) {
+      expect(!check.evidence.includes(".example."), `Live Drive check ${check.id} evidence must not use example template paths.`);
+      expect(!check.evidence.includes(".template."), `Live Drive check ${check.id} evidence must not use template paths.`);
+      expect(check.completedAt !== "1970-01-01T00:00:00.000Z", `Live Drive check ${check.id} completedAt must not use the template placeholder.`);
       expect(!isAbsolute(check.evidence), `Live Drive check ${check.id} evidence must use a repository-relative path.`);
       const evidenceFile = resolve(root, check.evidence);
       const evidenceRelative = relative(resolve(root, "output", "live"), evidenceFile);
@@ -166,6 +177,10 @@ function chromeExtensionId(value: unknown): value is string {
 
 function emailLike(value: unknown): value is string {
   return nonEmpty(value) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isPlaceholderEmail(value: unknown): boolean {
+  return nonEmpty(value) && /(@example\.com$|@your-domain\.com$|replace-with-)/i.test(value);
 }
 
 function browserWithVersion(value: unknown): value is string {

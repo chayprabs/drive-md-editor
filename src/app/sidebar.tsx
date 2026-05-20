@@ -1,6 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, FileText, Folder, Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import { normalizeMarkdownFileName } from "../shared/drive-names";
+import {
+  defaultContentForKind,
+  defaultFileNameForKind,
+  fileKindFromName,
+  mimeTypeForFileName,
+  normalizeSupportedFileName,
+  type MarkDriveFileKind
+} from "../shared/file-types";
 import { sendMessage } from "../shared/messages";
 import type { DriveFile, DriveFolder, DriveFolderPathItem, FrontmatterFields, OpenDocument, OutlineItem } from "../shared/types";
 
@@ -61,6 +68,7 @@ function DriveBrowser(props: Props): React.ReactElement {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [path, setPath] = useState<DriveFolderPathItem[]>([{ id: null, name: "My Drive" }]);
+  const [newFileKind, setNewFileKind] = useState<MarkDriveFileKind>("markdown");
   const [newName, setNewName] = useState("Untitled.md");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, DriveFolder[]>>({});
@@ -116,12 +124,13 @@ function DriveBrowser(props: Props): React.ReactElement {
 
   async function createFile(): Promise<void> {
     if (!beginDriveAction()) return;
-    const normalizedName = normalizeMarkdownFileName(newName);
+    const normalizedName = normalizeSupportedFileName(newName, newFileKind);
+    const markdown = newFileKind === "markdown" ? "# Untitled\n" : defaultContentForKind(newFileKind);
     try {
       const response = await sendMessage({
         type: "drive:create-file",
         name: normalizedName,
-        markdown: "# Untitled\n",
+        markdown,
         folderId: props.folderId
       });
       if (response.ok && "document" in response) {
@@ -133,14 +142,14 @@ function DriveBrowser(props: Props): React.ReactElement {
             {
               id: createdFileId,
               name: created.name,
-              mimeType: "text/markdown",
+              mimeType: mimeTypeForFileName(created.name),
               modifiedTime: created.modifiedTime ?? new Date().toISOString(),
               parents: created.folderId ? [created.folderId] : undefined
             },
             ...current.filter((file) => file.id !== createdFileId)
           ]);
         }
-        setNewName("Untitled.md");
+        setNewName(defaultFileNameForKind(newFileKind));
         setError(null);
         return;
       }
@@ -155,7 +164,8 @@ function DriveBrowser(props: Props): React.ReactElement {
 
   async function renameFile(fileId: string, name: string): Promise<void> {
     if (!beginDriveAction()) return;
-    const normalizedName = normalizeMarkdownFileName(name);
+    const kind = fileKindFromName(name) ?? "markdown";
+    const normalizedName = normalizeSupportedFileName(name, kind);
     try {
       const response = await sendMessage({ type: "drive:rename-file", fileId, name: normalizedName });
       if (response.ok) {
@@ -245,12 +255,26 @@ function DriveBrowser(props: Props): React.ReactElement {
         ))}
       </nav>
       <div className="browser-actions">
-        <input value={newName} onChange={(event) => setNewName(event.target.value)} aria-label="New markdown file name" disabled={actionBusy} />
-        <button title="Create markdown file" disabled={actionBusy} onClick={() => void createFile()}><Plus size={14} /></button>
+        <select
+          value={newFileKind}
+          aria-label="New file type"
+          disabled={actionBusy}
+          onChange={(event) => {
+            const kind = event.target.value as MarkDriveFileKind;
+            setNewFileKind(kind);
+            setNewName(defaultFileNameForKind(kind));
+          }}
+        >
+          <option value="markdown">Markdown</option>
+          <option value="text">Plain text</option>
+          <option value="json">JSON</option>
+        </select>
+        <input value={newName} onChange={(event) => setNewName(event.target.value)} aria-label="New file name" disabled={actionBusy} />
+        <button title="Create file" disabled={actionBusy} onClick={() => void createFile()}><Plus size={14} /></button>
       </div>
       <label className="searchbox">
         <Search size={14} />
-        <input value={props.query} onChange={(event) => props.onQuery(event.target.value)} aria-label="Search .md files" />
+        <input value={props.query} onChange={(event) => props.onQuery(event.target.value)} aria-label="Search supported files" />
       </label>
       <div className="folder-list">
         <button className="folder-row" disabled={actionBusy} onClick={() => props.onFolder(null)}>
@@ -272,7 +296,7 @@ function DriveBrowser(props: Props): React.ReactElement {
       </div>
       {error ? <p className="inline-error">{error}</p> : null}
       <div className="file-list" aria-busy={busy || actionBusy}>
-        {!busy && files.length === 0 ? <p className="muted">No Markdown files in this folder.</p> : null}
+        {!busy && files.length === 0 ? <p className="muted">No supported files in this folder.</p> : null}
         {files.map((file) => (
           <div className={`file-row${props.activeFileId === file.id ? " active" : ""}`} key={file.id}>
             {renaming?.id === file.id ? (

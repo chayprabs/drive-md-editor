@@ -45,7 +45,24 @@ import {
 import { loadRecents, rememberDocument, rememberDriveFile } from "../shared/recents";
 import { defaultSettings, saveSettings } from "../shared/settings";
 import { summarizeSearch } from "../shared/search";
-import type { MarkDriveSettings, OpenDocument, RecentFile, SaveConflict, ThemeName, ViewMode } from "../shared/types";
+import {
+  duplicateFileName,
+  fileKindFromName,
+  fileKindLabel,
+  isSupportedFileName,
+  jsonSyntaxStatus,
+  mimeTypeForFileName,
+  type MarkDriveFileKind
+} from "../shared/file-types";
+import type {
+  FrontmatterFields,
+  MarkDriveSettings,
+  OpenDocument,
+  RecentFile,
+  SaveConflict,
+  ThemeName,
+  ViewMode
+} from "../shared/types";
 import { cleanDriveId } from "../shared/drive-url";
 import "./styles.css";
 
@@ -62,6 +79,14 @@ draft: false
 Start writing in MarkDrive.
 `;
 const maxImageUploadBytes = 10 * 1024 * 1024;
+
+const emptyFrontmatter: FrontmatterFields = {
+  title: "",
+  date: "",
+  tags: [],
+  author: "",
+  draft: false
+};
 
 function App(): React.ReactElement {
   const [settings, setSettings] = useState<MarkDriveSettings>(defaultSettings);
@@ -109,6 +134,24 @@ function App(): React.ReactElement {
   const openFileRef = useRef<(fileId: string) => Promise<void>>(async () => undefined);
   const saveCurrentRef = useRef<(source?: "manual" | "autosave" | "vim", target?: OpenDocument) => Promise<void>>(async () => undefined);
   documentRef.current = document;
+
+  const fileKind = useMemo(
+    (): MarkDriveFileKind => fileKindFromName(document.name) ?? "markdown",
+    [document.name]
+  );
+  const previewEnabled = useMemo(() => fileKind === "markdown", [fileKind]);
+  const jsonStatus = useMemo(
+    () => (fileKind === "json" ? jsonSyntaxStatus(document.markdown) : { valid: true, message: "" }),
+    [fileKind, document.markdown]
+  );
+
+  useEffect(() => {
+    if (!previewEnabled) setViewMode("editor");
+  }, [previewEnabled]);
+
+  useEffect(() => {
+    if (!previewEnabled && activeSidebar === "frontmatter") setActiveSidebar("outline");
+  }, [previewEnabled, activeSidebar]);
 
   const clearRetryTimer = useCallback(() => {
     if (retryTimerRef.current) {
@@ -172,17 +215,23 @@ function App(): React.ReactElement {
     printRestoreTimerRef.current = window.setTimeout(restore, 30_000);
   }, []);
 
-  const outline = useMemo(() => extractOutline(document.markdown), [document.markdown]);
-  const frontmatter = useMemo(() => readFrontmatter(document.markdown), [document.markdown]);
+  const outline = useMemo(
+    () => (previewEnabled ? extractOutline(document.markdown) : []),
+    [document.markdown, previewEnabled]
+  );
+  const frontmatter = useMemo(
+    () => (previewEnabled ? readFrontmatter(document.markdown) : emptyFrontmatter),
+    [document.markdown, previewEnabled]
+  );
   const stats = useMemo(() => {
-    const content = markdownWithoutFrontmatter(document.markdown);
+    const content = previewEnabled ? markdownWithoutFrontmatter(document.markdown) : document.markdown;
     const words = content.trim().split(/\s+/).filter(Boolean).length;
     return {
       words,
       chars: document.markdown.length,
-      reading: readingTimeMinutes(document.markdown)
+      reading: previewEnabled ? readingTimeMinutes(document.markdown) : 0
     };
-  }, [document.markdown]);
+  }, [document.markdown, previewEnabled]);
   const findSummary = useMemo(() => summarizeSearch(document.markdown, findState), [document.markdown, findState]);
   const [findMatchIndex, setFindMatchIndex] = useState(0);
   const safelySetRecents = useCallback(async (load: () => Promise<RecentFile[]>) => {
@@ -319,6 +368,10 @@ function App(): React.ReactElement {
       pushToast({ tone: "danger", title: "Could not open file", detail: "Drive returned an unexpected response." });
       return;
     }
+    if (!isSupportedFileName(response.file.name)) {
+      pushToast({ tone: "danger", title: "Unsupported file type", detail: `"${response.file.name}" is not an editable extension.` });
+      return;
+    }
     setDocument({
       fileId: response.file.id,
       name: response.file.name,
@@ -332,7 +385,7 @@ function App(): React.ReactElement {
     setShowEmptyState(false);
     dirtyRef.current = false;
     setSaveState("idle");
-  }, [confirmLeaveDocument, handleDriveFailure, pushToast, safelySetRecents]);
+  }, [confirmLeaveDocument, pushToast, safelySetRecents, showDriveIssue]);
 
   const saveCurrent = useCallback(async (
     source: "manual" | "autosave" | "vim" = "manual",
@@ -562,10 +615,10 @@ function App(): React.ReactElement {
   }, []);
 
   const openFindReplace = useCallback(() => {
-    if (viewMode === "preview") setViewMode("split");
+    if (previewEnabled && viewMode === "preview") setViewMode("split");
     setFindOpen(true);
     setFindMatchIndex(0);
-  }, [viewMode]);
+  }, [previewEnabled, viewMode]);
 
   const findInEditor = useCallback((direction: "next" | "previous") => {
     const result = editorRef.current?.find(findState, direction) ?? { total: 0, index: 0 };
@@ -607,15 +660,17 @@ function App(): React.ReactElement {
   }, [browserFolderId, confirmLeaveDocument]);
 
   const importPaste = useCallback((html: string) => {
+    if (fileKind !== "markdown") return;
     try {
       const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
       editorRef.current?.insertText(turndown.turndown(html));
     } catch (failure) {
       pushToast({ tone: "danger", title: "HTML paste failed", detail: describeUnknownError(failure) });
     }
-  }, [pushToast]);
+  }, [fileKind, pushToast]);
 
   const uploadImages = useCallback(async (files: File[]) => {
+    if (fileKind !== "markdown") return;
     for (const file of files) {
       try {
         if (file.size > maxImageUploadBytes) {
@@ -640,7 +695,7 @@ function App(): React.ReactElement {
         pushToast({ tone: "danger", title: "Image upload failed", detail: describeUnknownError(failure) });
       }
     }
-  }, [document.folderId, pushToast]);
+  }, [document.folderId, fileKind, pushToast]);
 
   const exportHtml = useCallback(() => {
     void (async () => {
@@ -661,8 +716,8 @@ function App(): React.ReactElement {
 
   const exportMarkdown = useCallback(() => {
     try {
-      downloadBlob(document.name, "text/markdown", document.markdown);
-      pushToast({ tone: "success", title: "Exported Markdown", detail: document.name });
+      downloadBlob(document.name, mimeTypeForFileName(document.name), document.markdown);
+      pushToast({ tone: "success", title: "Exported file", detail: document.name });
     } catch (failure) {
       pushToast({ tone: "danger", title: "Markdown export failed", detail: describeUnknownError(failure) });
     }
@@ -734,7 +789,7 @@ function App(): React.ReactElement {
         void saveCurrent("manual");
         return;
       }
-      if (mod && event.key === "\\") {
+      if (mod && previewEnabled && event.key === "\\") {
         event.preventDefault();
         setViewMode((current) => current === "split" ? "preview" : current === "preview" ? "editor" : "split");
         return;
@@ -751,7 +806,12 @@ function App(): React.ReactElement {
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [findOpen, openFindReplace, saveCurrent, toggleFullscreen]);
+  }, [findOpen, openFindReplace, previewEnabled, saveCurrent, toggleFullscreen]);
+
+  const toggleSplitPreviewEditor = useCallback(() => {
+    if (!previewEnabled) return;
+    setViewMode((current) => (current === "split" ? "preview" : current === "preview" ? "editor" : "split"));
+  }, [previewEnabled]);
 
   return (
     <main className="app-shell">
@@ -759,26 +819,39 @@ function App(): React.ReactElement {
         <div className="brand">
           <img src="/icon.svg" alt="" />
           <span>MarkDrive</span>
+          <span className="file-kind-badge">{fileKindLabel(fileKind)}</span>
         </div>
         <div className="toolbar-group">
           <button title="New file" aria-label="New file" onClick={newDocument}><FilePlus2 size={16} /></button>
           <button title="Save" aria-label="Save" onClick={() => void saveCurrent("manual")}><Save size={16} /></button>
-          <button title="Bold" aria-label="Bold" onClick={() => command("bold")}><Bold size={16} /></button>
-          <button title="Italic" aria-label="Italic" onClick={() => command("italic")}><Italic size={16} /></button>
-          <button title="Link" aria-label="Link" onClick={() => command("link")}><Link size={16} /></button>
+          {previewEnabled ? (
+            <>
+              <button title="Bold" aria-label="Bold" onClick={() => command("bold")}><Bold size={16} /></button>
+              <button title="Italic" aria-label="Italic" onClick={() => command("italic")}><Italic size={16} /></button>
+              <button title="Link" aria-label="Link" onClick={() => command("link")}><Link size={16} /></button>
+            </>
+          ) : null}
           <button title="Find and replace" aria-label="Find and replace" aria-pressed={findOpen} onClick={openFindReplace}><Search size={16} /></button>
         </div>
         <div className="toolbar-group">
-          <button title="Split view" aria-label="Split view" aria-pressed={viewMode === "split"} onClick={() => setViewMode("split")}><Columns2 size={16} /></button>
+          {previewEnabled ? (
+            <button title="Split view" aria-label="Split view" aria-pressed={viewMode === "split"} onClick={() => setViewMode("split")}><Columns2 size={16} /></button>
+          ) : null}
           <button title="Editor only" aria-label="Editor only" aria-pressed={viewMode === "editor"} onClick={() => setViewMode("editor")}><Braces size={16} /></button>
-          <button title="Preview only" aria-label="Preview only" aria-pressed={viewMode === "preview"} onClick={() => setViewMode("preview")}><Eye size={16} /></button>
+          {previewEnabled ? (
+            <button title="Preview only" aria-label="Preview only" aria-pressed={viewMode === "preview"} onClick={() => setViewMode("preview")}><Eye size={16} /></button>
+          ) : null}
           <button title="Soft wrap" aria-label="Soft wrap" aria-pressed={settings.softWrap} onClick={() => void updateSettings({ softWrap: !settings.softWrap })}><WrapText size={16} /></button>
           <button title={`Theme: ${settings.theme}`} aria-label={`Theme: ${settings.theme}`} onClick={() => void updateSettings({ theme: nextTheme(settings.theme) })}>{settings.theme === "light" || settings.theme === "solarized" ? <Sun size={16} /> : <Moon size={16} />}</button>
         </div>
         <div className="toolbar-group overflow">
-          <button title="Export Markdown" aria-label="Export Markdown" onClick={exportMarkdown}><Download size={16} /></button>
-          <button title="Export HTML" aria-label="Export HTML" onClick={exportHtml}><Upload size={16} /></button>
-          <button title="Export PDF" aria-label="Export PDF" onClick={exportPdf}><FileDown size={16} /></button>
+          <button title="Export file" aria-label="Export file" onClick={exportMarkdown}><Download size={16} /></button>
+          {previewEnabled ? (
+            <>
+              <button title="Export HTML" aria-label="Export HTML" onClick={exportHtml}><Upload size={16} /></button>
+              <button title="Export PDF" aria-label="Export PDF" onClick={exportPdf}><FileDown size={16} /></button>
+            </>
+          ) : null}
           <button title="Options" aria-label="Options" onClick={openOptionsPage}><Settings size={16} /></button>
         </div>
         <div className="toolbar-more" ref={overflowRef}>
@@ -793,9 +866,13 @@ function App(): React.ReactElement {
           </button>
           {overflowOpen ? (
             <div className="toolbar-menu" role="menu">
-              <button role="menuitem" onClick={() => { setOverflowOpen(false); exportMarkdown(); }}><Download size={14} /> Export Markdown</button>
-              <button role="menuitem" onClick={() => { setOverflowOpen(false); exportHtml(); }}><Upload size={14} /> Export HTML</button>
-              <button role="menuitem" onClick={() => { setOverflowOpen(false); exportPdf(); }}><FileDown size={14} /> Export PDF</button>
+              <button role="menuitem" onClick={() => { setOverflowOpen(false); exportMarkdown(); }}><Download size={14} /> Export file</button>
+              {previewEnabled ? (
+                <>
+                  <button role="menuitem" onClick={() => { setOverflowOpen(false); exportHtml(); }}><Upload size={14} /> Export HTML</button>
+                  <button role="menuitem" onClick={() => { setOverflowOpen(false); exportPdf(); }}><FileDown size={14} /> Export PDF</button>
+                </>
+              ) : null}
               <button role="menuitem" onClick={() => { setOverflowOpen(false); openOptionsPage(); }}><Settings size={14} /> Options</button>
             </div>
           ) : null}
@@ -822,7 +899,9 @@ function App(): React.ReactElement {
         <aside className="rail">
           <button title="Outline" aria-pressed={activeSidebar === "outline"} onClick={() => setActiveSidebar("outline")}><PanelLeft size={16} /></button>
           <button title="Drive browser" aria-pressed={activeSidebar === "drive"} onClick={() => setActiveSidebar("drive")}><FolderOpen size={16} /></button>
-          <button title="Frontmatter" aria-pressed={activeSidebar === "frontmatter"} onClick={() => setActiveSidebar("frontmatter")}><Check size={16} /></button>
+          {previewEnabled ? (
+            <button title="Frontmatter" aria-pressed={activeSidebar === "frontmatter"} onClick={() => setActiveSidebar("frontmatter")}><Check size={16} /></button>
+          ) : null}
         </aside>
         <Sidebar
           active={activeSidebar}
@@ -849,9 +928,9 @@ function App(): React.ReactElement {
           onDriveFailure={(status, message, retryAfterMs) => handleDriveFailure(status, message, retryAfterMs)}
           onJump={(line) => {
             const heading = outline.find((item) => item.line === line);
-            if (viewMode === "preview") setViewMode("split");
+            if (previewEnabled && viewMode === "preview") setViewMode("split");
             editorRef.current?.goToLine(line);
-            if (heading) previewRef.current?.scrollToHeading(heading.id);
+            if (heading && previewEnabled) previewRef.current?.scrollToHeading(heading.id);
           }}
         />
         {showEmptyState ? (
@@ -870,13 +949,14 @@ function App(): React.ReactElement {
               <MarkdownEditor
                 ref={editorRef}
                 markdown={document.markdown}
+                documentMode={fileKind}
                 vimMode={settings.vimMode}
                 softWrap={settings.softWrap}
                 searchHighlight={findOpen && findState.query ? findState : null}
                 onChange={changeMarkdown}
                 onSave={() => void saveCurrent("manual")}
                 onVimSave={() => void saveCurrent("vim")}
-                onToggleView={() => setViewMode((current) => current === "split" ? "preview" : current === "preview" ? "editor" : "split")}
+                onToggleView={toggleSplitPreviewEditor}
                 onOpenFind={openFindReplace}
                 onFullscreenError={(failure) => pushToast({ tone: "danger", title: "Fullscreen failed", detail: describeUnknownError(failure) })}
                 onSmartHtmlPaste={importPaste}
@@ -884,7 +964,7 @@ function App(): React.ReactElement {
                 onCursor={(line, column) => setCursor({ line, column })}
               />
             )}
-            {viewMode !== "editor" && (
+            {previewEnabled && viewMode !== "editor" ? (
               <PreviewPane
                 ref={previewRef}
                 markdown={document.markdown}
@@ -894,16 +974,20 @@ function App(): React.ReactElement {
                 onChange={changeMarkdown}
                 onHydrationError={(failure) => pushToast({ tone: "danger", title: "Preview rendering failed", detail: describeUnknownError(failure) })}
               />
-            )}
+            ) : null}
           </div>
         )}
       </section>
 
       <footer className="statusbar">
         <span>{document.name}</span>
+        <span>{fileKindLabel(fileKind)}</span>
+        {fileKind === "json" ? (
+          <span className={`json-status${jsonStatus.valid ? "" : " invalid"}`}>{jsonStatus.message}</span>
+        ) : null}
         <span>{stats.words} words</span>
         <span>{stats.chars} chars</span>
-        <span>{stats.reading} min read</span>
+        {previewEnabled ? <span>{stats.reading} min read</span> : null}
         <span>Ln {cursor.line}, Col {cursor.column}</span>
         <span className={`save-state ${saveState}`} aria-live="polite">{saveState}</span>
       </footer>
@@ -923,7 +1007,7 @@ function App(): React.ReactElement {
             setConflict(null);
           }}
           onSaveCopy={() => {
-            const copy = { ...conflict.local, fileId: null, modifiedTime: null, name: conflict.local.name.replace(/\.md$/i, " copy.md") };
+            const copy = { ...conflict.local, fileId: null, modifiedTime: null, name: duplicateFileName(conflict.local.name) };
             setDocument(copy);
             setConflict(null);
             void saveCurrent("manual", copy);

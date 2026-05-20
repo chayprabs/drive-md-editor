@@ -1,5 +1,7 @@
 import type { DriveFile, DriveFolder, DriveFolderPathItem, OpenDocument } from "../shared/types";
-import { normalizeDriveAssetName, normalizeMarkdownFileName } from "../shared/drive-names";
+import { driveNameContainsClauses, isSupportedFileName, mimeTypeForFileName } from "../shared/file-types";
+import { normalizeDriveAssetName, normalizeDriveFileName } from "../shared/drive-names";
+import { isDriveResourceId } from "../shared/drive-url";
 
 const apiBase = "https://www.googleapis.com/drive/v3";
 const uploadBase = "https://www.googleapis.com/upload/drive/v3";
@@ -12,6 +14,14 @@ export class DriveApiError extends Error {
   ) {
     super(message);
   }
+}
+
+function assertDriveResourceId(fileId: string, label = "Drive file id"): void {
+  if (!isDriveResourceId(fileId)) throw new DriveApiError(400, `Invalid ${label}.`);
+}
+
+function assertOptionalDriveResourceId(folderId: string | null, label = "Drive folder id"): void {
+  if (folderId) assertDriveResourceId(folderId, label);
 }
 
 async function request<T>(token: string, input: RequestInfo | URL, init: RequestInit = {}): Promise<T> {
@@ -31,6 +41,7 @@ async function request<T>(token: string, input: RequestInfo | URL, init: Request
 }
 
 export async function getMarkdownFile(token: string, fileId: string): Promise<{ file: DriveFile; markdown: string }> {
+  assertDriveResourceId(fileId);
   const fields = "id,name,mimeType,modifiedTime,parents,webViewLink";
   const file = await request<DriveFile>(token, `${apiBase}/files/${fileId}?fields=${encodeURIComponent(fields)}`);
   const contentResponse = await fetch(`${apiBase}/files/${fileId}?alt=media`, {
@@ -46,6 +57,7 @@ export async function saveMarkdownFile(
   markdown: string,
   previousModifiedTime: string | null
 ): Promise<OpenDocument> {
+  assertDriveResourceId(fileId);
   const current = await request<DriveFile>(
     token,
     `${apiBase}/files/${fileId}?fields=${encodeURIComponent("id,name,mimeType,modifiedTime,parents")}`
@@ -61,7 +73,7 @@ export async function saveMarkdownFile(
     {
       method: "PATCH",
       body: markdown,
-      headers: { "Content-Type": "text/markdown; charset=utf-8" }
+      headers: { "Content-Type": mimeTypeForFileName(current.name) }
     }
   );
 
@@ -81,14 +93,17 @@ export async function createMarkdownFile(
   markdown: string,
   folderId: string | null
 ): Promise<OpenDocument> {
+  assertOptionalDriveResourceId(folderId);
+  const normalizedName = normalizeDriveFileName(name);
+  const mimeType = mimeTypeForFileName(normalizedName);
   const metadata = {
-    name: normalizeMarkdownFileName(name),
-    mimeType: "text/markdown",
+    name: normalizedName,
+    mimeType,
     parents: folderId ? [folderId] : undefined
   };
   const form = new FormData();
   form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-  form.append("file", new Blob([markdown], { type: "text/markdown" }));
+  form.append("file", new Blob([markdown], { type: mimeType }));
 
   const created = await request<DriveFile>(
     token,
@@ -110,7 +125,9 @@ export async function createMarkdownFile(
 }
 
 export async function listMarkdownFiles(token: string, folderId: string | null, query: string): Promise<DriveFile[]> {
-  const terms = ["trashed = false", `name contains ${driveQueryLiteral(".md")}`];
+  assertOptionalDriveResourceId(folderId);
+  const extensionClauses = driveNameContainsClauses().join(" or ");
+  const terms = ["trashed = false", `(${extensionClauses})`];
   if (folderId) terms.push(`${driveQueryLiteral(folderId)} in parents`);
   if (query.trim()) terms.push(`name contains ${driveQueryLiteral(query.trim())}`);
 
@@ -121,10 +138,11 @@ export async function listMarkdownFiles(token: string, folderId: string | null, 
     pageSize: "50",
     fields: "nextPageToken,files(id,name,mimeType,modifiedTime,parents,webViewLink)"
   }));
-  return files.filter((file) => /\.md$/i.test(file.name));
+  return files.filter((file) => isSupportedFileName(file.name));
 }
 
 export async function listFolders(token: string, folderId: string | null): Promise<DriveFolder[]> {
+  assertOptionalDriveResourceId(folderId);
   const parent = folderId ?? "root";
   return listDriveFiles<DriveFolder>(token, new URLSearchParams({
     q: [
@@ -141,6 +159,7 @@ export async function listFolders(token: string, folderId: string | null): Promi
 export async function getFolderPath(token: string, folderId: string | null): Promise<DriveFolderPathItem[]> {
   const path: DriveFolderPathItem[] = [{ id: null, name: "My Drive" }];
   if (!folderId) return path;
+  assertDriveResourceId(folderId, "Drive folder id");
 
   const folders: DriveFolder[] = [];
   let currentId: string | undefined = folderId;
@@ -159,13 +178,15 @@ export async function getFolderPath(token: string, folderId: string | null): Pro
 }
 
 export async function renameFile(token: string, fileId: string, name: string): Promise<void> {
+  assertDriveResourceId(fileId);
   await request(token, `${apiBase}/files/${fileId}`, {
     method: "PATCH",
-    body: JSON.stringify({ name: normalizeMarkdownFileName(name) })
+    body: JSON.stringify({ name: normalizeDriveFileName(name) })
   });
 }
 
 export async function trashFile(token: string, fileId: string): Promise<void> {
+  assertDriveResourceId(fileId);
   await request(token, `${apiBase}/files/${fileId}`, {
     method: "PATCH",
     body: JSON.stringify({ trashed: true })
@@ -179,6 +200,7 @@ export async function uploadImage(
   dataUrl: string,
   folderId: string | null
 ): Promise<string> {
+  assertOptionalDriveResourceId(folderId);
   const imagesFolder = await ensureImagesFolder(token, folderId);
   const { bytes, contentType } = decodeImageDataUrl(dataUrl, mimeType);
   const metadata = { name: normalizeDriveAssetName(name), parents: [imagesFolder] };
@@ -220,6 +242,7 @@ function driveQueryLiteral(value: string): string {
 }
 
 async function ensureImagesFolder(token: string, parentFolderId: string | null): Promise<string> {
+  assertOptionalDriveResourceId(parentFolderId);
   const parent = parentFolderId ?? "root";
   const params = new URLSearchParams({
     q: [

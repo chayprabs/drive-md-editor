@@ -1,14 +1,17 @@
+import { isSupportedFileName } from "../shared/file-types";
 import { sendMessage } from "../shared/messages";
 import { cleanDriveId, extractDriveFileIdFromUrl, extractDriveFolderIdFromUrl } from "../shared/drive-url";
 
-const markdownNamePattern = /\.m(?:ark)?d(?:own)?$/i;
+const supportedNamePattern = /\b[\w.-]+\.(?:md|markdown|mdown|txt|json)\b/i;
 const contextStorageKey = "markdrive.contextTarget";
 let scanScheduled = false;
 let noticeTimer: number | null = null;
 
-function isMarkdownLabel(label: string): boolean {
+function isSupportedDriveLabel(label: string): boolean {
   const normalized = label.trim();
-  return markdownNamePattern.test(normalized) || /\b[\w.-]+\.md(?:own)?\b/i.test(normalized);
+  if (isSupportedFileName(normalized)) return true;
+  const match = supportedNamePattern.exec(normalized);
+  return match ? isSupportedFileName(match[0]) : false;
 }
 
 document.addEventListener("click", (event) => {
@@ -16,7 +19,7 @@ document.addEventListener("click", (event) => {
   if (!anchor) return;
   const fileId = extractDriveFileIdFromUrl(anchor.href) ?? extractFileIdFromElement(anchor);
   const label = anchor.getAttribute("aria-label") ?? anchor.textContent ?? "";
-  if (!fileId || !isMarkdownLabel(label)) return;
+  if (!fileId || !isSupportedDriveLabel(label)) return;
 
   event.preventDefault();
   event.stopPropagation();
@@ -27,8 +30,8 @@ document.addEventListener("contextmenu", (event) => {
   const row = (event.target as Element | null)?.closest<HTMLElement>("a[href], [data-id], [aria-label]");
   if (!row) return;
   const label = row.getAttribute("aria-label") ?? row.textContent ?? "";
-  if (!isMarkdownLabel(label)) return;
-  row.setAttribute("data-markdrive-markdown", "true");
+  if (!isSupportedDriveLabel(label)) return;
+  row.setAttribute("data-markdrive-supported", "true");
   const fileId = row instanceof HTMLAnchorElement ? extractDriveFileIdFromUrl(row.href) : extractFileIdFromElement(row);
   if (fileId) {
     void captureContextTarget(fileId, extractDriveFolderIdFromUrl(location.href));
@@ -43,17 +46,17 @@ function scheduleScan(): void {
   scanScheduled = true;
   window.requestAnimationFrame(() => {
     scanScheduled = false;
-    markMarkdownRows();
+    markSupportedRows();
   });
 }
 
-function markMarkdownRows(): void {
+function markSupportedRows(): void {
   const startedAt = performance.now();
   const candidates = document.querySelectorAll<HTMLElement>("a[href], [data-id][aria-label], [data-tooltip]");
   for (const element of candidates) {
     const label = element.getAttribute("aria-label") ?? element.getAttribute("data-tooltip") ?? element.textContent ?? "";
-    if (isMarkdownLabel(label)) {
-      element.dataset.markdriveMarkdown = "true";
+    if (isSupportedDriveLabel(label)) {
+      element.dataset.markdriveSupported = "true";
       element.style.setProperty("--markdrive-accent", "#2DD4BF");
     }
     if (performance.now() - startedAt > 4) break;
