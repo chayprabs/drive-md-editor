@@ -12,6 +12,10 @@ function Options(): React.ReactElement {
   const settingsRef = useRef<MarkDriveSettings>(defaultSettings);
 
   useEffect(() => {
+    document.documentElement.dataset.theme = settings.theme;
+  }, [settings.theme]);
+
+  useEffect(() => {
     void sendMessage({ type: "settings:get" }).then((response) => {
       if (response.ok && "settings" in response) {
         settingsRef.current = response.settings;
@@ -23,6 +27,20 @@ function Options(): React.ReactElement {
     }).catch((failure: unknown) => {
       setError(failure instanceof Error ? failure.message : "Settings failed to load.");
     });
+  }, []);
+
+  useEffect(() => {
+    const syncSettings = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+      if (areaName !== "local" || !changes["markdrive.settings"]?.newValue) return;
+      void sendMessage({ type: "settings:get" }).then((response) => {
+        if (response.ok && "settings" in response) {
+          settingsRef.current = response.settings;
+          setSettings(response.settings);
+        }
+      });
+    };
+    chrome.storage.onChanged.addListener(syncSettings);
+    return () => chrome.storage.onChanged.removeListener(syncSettings);
   }, []);
 
   async function update(update: Partial<MarkDriveSettings>): Promise<void> {
@@ -72,26 +90,40 @@ function Options(): React.ReactElement {
 
   return (
     <main className="options-page">
-      <h1>MarkDrive Options</h1>
+      <header className="options-header">
+        <h1>MarkDrive Options</h1>
+        <p>Editor, preview, and Drive sync preferences apply across MarkDrive tabs.</p>
+      </header>
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
-      <label>Theme<select value={settings.theme} onChange={(event) => void update({ theme: event.target.value as ThemeName })}>
-        <option value="dark">Dark</option>
-        <option value="light">Light</option>
-        <option value="dracula">Dracula</option>
-        <option value="nord">Nord</option>
-        <option value="solarized">Solarized</option>
-      </select></label>
-      <label>Autosave<select value={settings.autosaveInterval} onChange={(event) => void update({ autosaveInterval: Number(event.target.value) as AutosaveInterval })}>
-        <option value={2000}>2 seconds</option>
-        <option value={5000}>5 seconds</option>
-        <option value={30000}>30 seconds</option>
-        <option value={0}>Off</option>
-      </select></label>
-      <label className="checkbox"><input type="checkbox" checked={settings.vimMode} onChange={(event) => void update({ vimMode: event.target.checked })} /> Vim mode</label>
-      <label className="checkbox"><input type="checkbox" checked={settings.softWrap} onChange={(event) => void update({ softWrap: event.target.checked })} /> Soft wrap</label>
-      <label className="checkbox"><input type="checkbox" checked={settings.onboardingComplete} onChange={(event) => void update({ onboardingComplete: event.target.checked })} /> Onboarding complete</label>
-      <label>Last Drive folder<input value={settings.lastFolderId ?? ""} onChange={(event) => void update({ lastFolderId: event.target.value.trim() || null })} /></label>
-      <button className="settings-reset" onClick={() => void reset()}><RotateCcw size={14} /> Reset settings</button>
+      <section className="options-card" aria-labelledby="appearance-heading">
+        <h2 id="appearance-heading">Appearance</h2>
+        <label>Theme<select value={settings.theme} onChange={(event) => void update({ theme: event.target.value as ThemeName })}>
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+          <option value="dracula">Dracula</option>
+          <option value="nord">Nord</option>
+          <option value="solarized">Solarized</option>
+        </select></label>
+      </section>
+      <section className="options-card" aria-labelledby="editor-heading">
+        <h2 id="editor-heading">Editor</h2>
+        <label>Autosave<select value={settings.autosaveInterval} onChange={(event) => void update({ autosaveInterval: Number(event.target.value) as AutosaveInterval })}>
+          <option value={2000}>2 seconds</option>
+          <option value={5000}>5 seconds</option>
+          <option value={30000}>30 seconds</option>
+          <option value={0}>Off</option>
+        </select></label>
+        <label className="checkbox"><input type="checkbox" checked={settings.vimMode} onChange={(event) => void update({ vimMode: event.target.checked })} /> Vim mode</label>
+        <label className="checkbox"><input type="checkbox" checked={settings.softWrap} onChange={(event) => void update({ softWrap: event.target.checked })} /> Soft wrap</label>
+      </section>
+      <section className="options-card" aria-labelledby="drive-heading">
+        <h2 id="drive-heading">Drive</h2>
+        <label>Last Drive folder<input value={settings.lastFolderId ?? ""} onChange={(event) => void update({ lastFolderId: event.target.value.trim() || null })} aria-describedby="last-folder-hint" />
+          <span id="last-folder-hint" className="field-hint">Paste a folder ID from the Drive browser.</span>
+        </label>
+        <label className="checkbox"><input type="checkbox" checked={settings.onboardingComplete} onChange={(event) => void update({ onboardingComplete: event.target.checked })} /> Onboarding complete</label>
+      </section>
+      <button type="button" className="settings-reset" onClick={() => void reset()}><RotateCcw size={14} /> Reset settings</button>
     </main>
   );
 }

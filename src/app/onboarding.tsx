@@ -47,8 +47,11 @@ export function Onboarding({ onFinish }: Props): React.ReactElement {
           ))}
         </div>
         <div className="modal-actions">
-          <button onClick={onFinish}>Skip</button>
-          <button onClick={() => last ? onFinish() : setIndex((current) => current + 1)}>
+          <button type="button" className="btn-ghost" onClick={onFinish}>Skip</button>
+          {index > 0 ? (
+            <button type="button" className="btn-ghost" onClick={() => setIndex((current) => current - 1)}>Back</button>
+          ) : null}
+          <button type="button" className="btn-primary" onClick={() => last ? onFinish() : setIndex((current) => current + 1)}>
             {last ? "Start Editing" : "Next"}
           </button>
         </div>

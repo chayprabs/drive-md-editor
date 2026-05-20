@@ -1,6 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, FileText, Folder, Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import { normalizeMarkdownFileName } from "../shared/drive-names";
+import {
+  defaultContentForKind,
+  defaultFileNameForKind,
+  fileKindFromName,
+  mimeTypeForFileName,
+  normalizeSupportedFileName,
+  type MarkDriveFileKind
+} from "../shared/file-types";
 import { sendMessage } from "../shared/messages";
 import type { DriveFile, DriveFolder, DriveFolderPathItem, FrontmatterFields, OpenDocument, OutlineItem } from "../shared/types";
 
@@ -12,12 +19,14 @@ interface Props {
   frontmatter: FrontmatterFields;
   query: string;
   folderId: string | null;
+  activeFileId: string | null;
   onQuery(query: string): void;
   onFrontmatter(fields: FrontmatterFields): void;
   onOpenFile(fileId: string): void;
   onCreateDocument(document: OpenDocument): void;
   onFolder(folderId: string | null): void;
   onJump(line: number): void;
+  onDriveFailure(status: number | undefined, message: string, retryAfterMs?: number): void;
 }
 
 export function Sidebar(props: Props): React.ReactElement {
@@ -44,10 +53,22 @@ function Outline({ items, onJump }: { items: OutlineItem[]; onJump(line: number)
   );
 }
 
+function reportDriveBrowserFailure(
+  props: Props,
+  status: number | undefined,
+  message: string,
+  retryAfterMs?: number
+): void {
+  if (status === 401 || status === 403 || status === 404 || status === 429) {
+    props.onDriveFailure(status, message, retryAfterMs);
+  }
+}
+
 function DriveBrowser(props: Props): React.ReactElement {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [path, setPath] = useState<DriveFolderPathItem[]>([{ id: null, name: "My Drive" }]);
+  const [newFileKind, setNewFileKind] = useState<MarkDriveFileKind>("markdown");
   const [newName, setNewName] = useState("Untitled.md");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, DriveFolder[]>>({});
@@ -71,11 +92,23 @@ function DriveBrowser(props: Props): React.ReactElement {
       ]).then(([fileResponse, folderResponse, pathResponse]) => {
         if (requestId !== loadRequestRef.current) return;
         if (fileResponse.ok && "files" in fileResponse) setFiles(fileResponse.files);
-        else setError(fileResponse.ok ? unexpectedDriveResponse : fileResponse.message);
+        else {
+          const message = fileResponse.ok ? unexpectedDriveResponse : fileResponse.message;
+          setError(message);
+          reportDriveBrowserFailure(props, fileResponse.ok ? undefined : fileResponse.status, message, fileResponse.ok ? undefined : fileResponse.retryAfterMs);
+        }
         if (folderResponse.ok && "folders" in folderResponse) setFolders(folderResponse.folders);
-        else setError(folderResponse.ok ? unexpectedDriveResponse : folderResponse.message);
+        else {
+          const message = folderResponse.ok ? unexpectedDriveResponse : folderResponse.message;
+          setError(message);
+          reportDriveBrowserFailure(props, folderResponse.ok ? undefined : folderResponse.status, message, folderResponse.ok ? undefined : folderResponse.retryAfterMs);
+        }
         if (pathResponse.ok && "path" in pathResponse) setPath(pathResponse.path);
-        else setError(pathResponse.ok ? unexpectedDriveResponse : pathResponse.message);
+        else {
+          const message = pathResponse.ok ? unexpectedDriveResponse : pathResponse.message;
+          setError(message);
+          reportDriveBrowserFailure(props, pathResponse.ok ? undefined : pathResponse.status, message, pathResponse.ok ? undefined : pathResponse.retryAfterMs);
+        }
       }).catch((failure: unknown) => {
         if (requestId !== loadRequestRef.current) return;
         setError(failure instanceof Error ? failure.message : "Drive browser failed to load.");
@@ -91,21 +124,37 @@ function DriveBrowser(props: Props): React.ReactElement {
 
   async function createFile(): Promise<void> {
     if (!beginDriveAction()) return;
-    const normalizedName = normalizeMarkdownFileName(newName);
+    const normalizedName = normalizeSupportedFileName(newName, newFileKind);
+    const markdown = newFileKind === "markdown" ? "# Untitled\n" : defaultContentForKind(newFileKind);
     try {
       const response = await sendMessage({
         type: "drive:create-file",
         name: normalizedName,
-        markdown: "# Untitled\n",
+        markdown,
         folderId: props.folderId
       });
       if (response.ok && "document" in response) {
-        props.onCreateDocument(response.document);
-        setNewName("Untitled.md");
+        const created = response.document;
+        props.onCreateDocument(created);
+        const createdFileId = created.fileId;
+        if (createdFileId) {
+          setFiles((current) => [
+            {
+              id: createdFileId,
+              name: created.name,
+              mimeType: mimeTypeForFileName(created.name),
+              modifiedTime: created.modifiedTime ?? new Date().toISOString(),
+              parents: created.folderId ? [created.folderId] : undefined
+            },
+            ...current.filter((file) => file.id !== createdFileId)
+          ]);
+        }
+        setNewName(defaultFileNameForKind(newFileKind));
         setError(null);
         return;
       }
       setError(response.ok ? unexpectedDriveResponse : response.message);
+      if (!response.ok) reportDriveBrowserFailure(props, response.status, response.message, response.retryAfterMs);
     } catch (failure) {
       setError(describeUnknownError(failure));
     } finally {
@@ -115,7 +164,8 @@ function DriveBrowser(props: Props): React.ReactElement {
 
   async function renameFile(fileId: string, name: string): Promise<void> {
     if (!beginDriveAction()) return;
-    const normalizedName = normalizeMarkdownFileName(name);
+    const kind = fileKindFromName(name) ?? "markdown";
+    const normalizedName = normalizeSupportedFileName(name, kind);
     try {
       const response = await sendMessage({ type: "drive:rename-file", fileId, name: normalizedName });
       if (response.ok) {
@@ -125,6 +175,7 @@ function DriveBrowser(props: Props): React.ReactElement {
         return;
       }
       setError(response.message);
+      reportDriveBrowserFailure(props, response.status, response.message, response.retryAfterMs);
     } catch (failure) {
       setError(describeUnknownError(failure));
     } finally {
@@ -152,6 +203,7 @@ function DriveBrowser(props: Props): React.ReactElement {
         return;
       }
       setError(response.ok ? unexpectedDriveResponse : response.message);
+      if (!response.ok) reportDriveBrowserFailure(props, response.status, response.message, response.retryAfterMs);
     } catch (failure) {
       setError(describeUnknownError(failure));
     } finally {
@@ -160,7 +212,8 @@ function DriveBrowser(props: Props): React.ReactElement {
     }
   }
 
-  async function trashFile(fileId: string): Promise<void> {
+  async function trashFile(fileId: string, fileName: string): Promise<void> {
+    if (!window.confirm(`Move "${fileName}" to trash?`)) return;
     if (!beginDriveAction()) return;
     try {
       const response = await sendMessage({ type: "drive:trash-file", fileId });
@@ -170,6 +223,7 @@ function DriveBrowser(props: Props): React.ReactElement {
         return;
       }
       setError(response.message);
+      reportDriveBrowserFailure(props, response.status, response.message, response.retryAfterMs);
     } catch (failure) {
       setError(describeUnknownError(failure));
     } finally {
@@ -201,12 +255,26 @@ function DriveBrowser(props: Props): React.ReactElement {
         ))}
       </nav>
       <div className="browser-actions">
-        <input value={newName} onChange={(event) => setNewName(event.target.value)} aria-label="New markdown file name" disabled={actionBusy} />
-        <button title="Create markdown file" disabled={actionBusy} onClick={() => void createFile()}><Plus size={14} /></button>
+        <select
+          value={newFileKind}
+          aria-label="New file type"
+          disabled={actionBusy}
+          onChange={(event) => {
+            const kind = event.target.value as MarkDriveFileKind;
+            setNewFileKind(kind);
+            setNewName(defaultFileNameForKind(kind));
+          }}
+        >
+          <option value="markdown">Markdown</option>
+          <option value="text">Plain text</option>
+          <option value="json">JSON</option>
+        </select>
+        <input value={newName} onChange={(event) => setNewName(event.target.value)} aria-label="New file name" disabled={actionBusy} />
+        <button title="Create file" disabled={actionBusy} onClick={() => void createFile()}><Plus size={14} /></button>
       </div>
       <label className="searchbox">
         <Search size={14} />
-        <input value={props.query} onChange={(event) => props.onQuery(event.target.value)} aria-label="Search .md files" />
+        <input value={props.query} onChange={(event) => props.onQuery(event.target.value)} aria-label="Search supported files" />
       </label>
       <div className="folder-list">
         <button className="folder-row" disabled={actionBusy} onClick={() => props.onFolder(null)}>
@@ -228,8 +296,9 @@ function DriveBrowser(props: Props): React.ReactElement {
       </div>
       {error ? <p className="inline-error">{error}</p> : null}
       <div className="file-list" aria-busy={busy || actionBusy}>
+        {!busy && files.length === 0 ? <p className="muted">No supported files in this folder.</p> : null}
         {files.map((file) => (
-          <div className="file-row" key={file.id}>
+          <div className={`file-row${props.activeFileId === file.id ? " active" : ""}`} key={file.id}>
             {renaming?.id === file.id ? (
               <input
                 className="rename-input"
@@ -243,7 +312,7 @@ function DriveBrowser(props: Props): React.ReactElement {
                 }}
               />
             ) : (
-              <button onClick={() => props.onOpenFile(file.id)}>
+              <button onClick={() => props.onOpenFile(file.id)} aria-current={props.activeFileId === file.id ? "true" : undefined}>
                 <FileText size={14} />
                 <span>{file.name}</span>
               </button>
@@ -256,7 +325,7 @@ function DriveBrowser(props: Props): React.ReactElement {
             {renaming?.id === file.id ? (
               <button title="Cancel rename" disabled={actionBusy} onClick={() => setRenaming(null)}><X size={14} /></button>
             ) : (
-              <button title="Trash file" disabled={actionBusy} onClick={() => void trashFile(file.id)}>
+              <button title="Trash file" disabled={actionBusy} onClick={() => void trashFile(file.id, file.name)}>
                 <Trash2 size={14} />
               </button>
             )}

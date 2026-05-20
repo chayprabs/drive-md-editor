@@ -1,10 +1,10 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { readSource } from "./invariant-helpers";
 
 const root = resolve(import.meta.dirname, "..");
-const app = await readFile(resolve(root, "src/app/main.tsx"), "utf8");
-const modal = await readFile(resolve(root, "src/app/conflict-modal.tsx"), "utf8");
-const driveApi = await readFile(resolve(root, "src/background/drive-api.ts"), "utf8");
+const app = await readSource(resolve(root, "src/app/main.tsx"));
+const modal = await readSource(resolve(root, "src/app/conflict-modal.tsx"));
+const driveApi = await readSource(resolve(root, "src/background/drive-api.ts"));
 const failures: string[] = [];
 
 expect(driveApi.includes("current.modifiedTime !== previousModifiedTime"), "Drive save must compare modifiedTime before writing.");
@@ -42,7 +42,7 @@ expect(app.includes("setDocument({ ...conflict.local, markdown: conflict.drive.m
 expect(app.includes("dirtyRef.current = false"), "Keep Drive must clear the dirty flag.");
 expect(app.includes("setSaveState(\"saved\")"), "Keep Drive must leave the document saved.");
 expect(app.includes("const copy = { ...conflict.local, fileId: null, modifiedTime: null"), "Save as Copy must create a new file target.");
-expect(app.includes("conflict.local.name.replace(/\\.md$/i, \" copy.md\")"), "Save as Copy must name the copy distinctly.");
+expect(app.includes("name: duplicateFileName(conflict.local.name)"), "Save as Copy must name the copy distinctly.");
 expect(app.includes("void saveCurrent(\"manual\", copy)"), "Save as Copy must save the copy.");
 expect(app.includes("setConflict(null)"), "All conflict actions must close the modal.");
 

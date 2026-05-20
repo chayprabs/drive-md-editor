@@ -1,12 +1,12 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { includesAll, readSource } from "./invariant-helpers";
 
 const root = resolve(import.meta.dirname, "..");
-const app = await readFile(resolve(root, "src/app/main.tsx"), "utf8");
-const emptyState = await readFile(resolve(root, "src/app/empty-state.tsx"), "utf8");
-const onboarding = await readFile(resolve(root, "src/app/onboarding.tsx"), "utf8");
-const recents = await readFile(resolve(root, "src/shared/recents.ts"), "utf8");
-const sidebar = await readFile(resolve(root, "src/app/sidebar.tsx"), "utf8");
+const app = await readSource(resolve(root, "src/app/main.tsx"));
+const emptyState = await readSource(resolve(root, "src/app/empty-state.tsx"));
+const onboarding = await readSource(resolve(root, "src/app/onboarding.tsx"));
+const recents = await readSource(resolve(root, "src/shared/recents.ts"));
+const sidebar = await readSource(resolve(root, "src/app/sidebar.tsx"));
 const failures: string[] = [];
 
 expect(app.includes("const [showEmptyState"), "App must track the empty state.");
@@ -26,7 +26,12 @@ for (const mode of ["split", "editor", "preview"]) {
   expect(app.includes(`viewMode === "${mode}"`), `App must support ${mode} view mode.`);
 }
 expect(app.includes("{viewMode !== \"preview\" &&"), "Editor pane must hide in preview-only mode.");
-expect(app.includes("{viewMode !== \"editor\" &&"), "Preview pane must hide in editor-only mode.");
+expect(app.includes("previewEnabled && viewMode !== \"editor\""), "Preview pane must hide when preview is disabled or in editor-only mode.");
+expect(app.includes("const previewEnabled = useMemo"), "App must derive preview availability from file kind.");
+expect(app.includes("if (!previewEnabled) setViewMode(\"editor\")"), "Non-markdown files must force editor-only mode.");
+expect(app.includes("if (!previewEnabled && activeSidebar === \"frontmatter\") setActiveSidebar(\"outline\")"), "Frontmatter sidebar must hide for non-markdown files.");
+expect(app.includes("documentMode={fileKind}"), "Editor must receive the active document mode.");
+expect(app.includes("isSupportedFileName(response.file.name)"), "Opening Drive files must reject unsupported names.");
 
 for (const tab of ["outline", "drive", "frontmatter"]) {
   expect(app.includes(`activeSidebar === "${tab}"`), `Sidebar rail must expose ${tab}.`);
@@ -35,7 +40,9 @@ for (const tab of ["outline", "drive", "frontmatter"]) {
 
 expect(app.includes("<span>{stats.words} words</span>"), "Status bar must show word count.");
 expect(app.includes("<span>{stats.chars} chars</span>"), "Status bar must show character count.");
-expect(app.includes("<span>{stats.reading} min read</span>"), "Status bar must show reading time.");
+expect(app.includes("previewEnabled ? <span>{stats.reading} min read</span> : null"), "Status bar must hide reading time when preview is disabled.");
+expect(app.includes("fileKindLabel(fileKind)"), "Status bar must show the active file kind.");
+expect(app.includes("jsonStatus"), "Status bar must show JSON syntax status for JSON files.");
 expect(app.includes("<span>Ln {cursor.line}, Col {cursor.column}</span>"), "Status bar must show cursor line and column.");
 expect(app.includes("className={`save-state ${saveState}`}"), "Status bar must show save state.");
 
@@ -70,7 +77,7 @@ expect(onboarding.includes("Start Editing"), "Onboarding must finish with a star
 expect(sidebar.includes("<h2>Outline</h2>"), "Outline panel must be labelled.");
 expect(sidebar.includes("onClick={() => onJump(item.line)}"), "Outline entries must jump to headings.");
 expect(sidebar.includes("<h2>Drive</h2>"), "Drive browser panel must be labelled.");
-expect(sidebar.includes("aria-label=\"Search .md files\""), "Drive browser must expose Markdown search.");
+expect(sidebar.includes("aria-label=\"Search supported files\""), "Drive browser must expose supported file search.");
 expect(sidebar.includes("const unexpectedDriveResponse = \"Drive returned an unexpected response.\""), "Drive browser must have a stable malformed-response error.");
 expect(sidebar.includes("const loadRequestRef = useRef(0)"), "Drive browser loads must track request freshness.");
 expect(sidebar.includes("requestId !== loadRequestRef.current"), "Drive browser must ignore stale folder/search responses.");
@@ -84,20 +91,29 @@ expect(sidebar.includes("fileResponse.ok ? unexpectedDriveResponse : fileRespons
 expect(sidebar.includes("folderResponse.ok ? unexpectedDriveResponse : folderResponse.message"), "Drive browser folder loads must surface malformed responses.");
 expect(sidebar.includes("pathResponse.ok ? unexpectedDriveResponse : pathResponse.message"), "Drive browser path loads must surface malformed responses.");
 expect(sidebar.includes("if (requestId === loadRequestRef.current) setBusy(false)"), "Drive browser must clear busy state only for the latest load.");
-expect(sidebar.includes("type: \"drive:create-file\""), "Drive browser must create Markdown files.");
+expect(sidebar.includes("type: \"drive:create-file\""), "Drive browser must create supported files.");
 expect(sidebar.includes("async function createFile()") && sidebar.includes("setError(describeUnknownError(failure))"), "Drive browser create failures must surface runtime errors.");
+expect(sidebar.includes("setFiles((current) => [") && sidebar.includes("created.fileId"), "Drive browser create must add the new file to the folder list.");
 expect(sidebar.includes("if (!beginDriveAction()) return;"), "Drive browser create, rename, trash, and expand actions must avoid double submission.");
 expect(sidebar.includes("setError(response.ok ? unexpectedDriveResponse : response.message)"), "Drive browser create/folder responses must reject malformed successes.");
 expect(app.includes("folderId: browserFolderId"), "New local documents must target the current Drive browser folder.");
-expect(app.includes("}, [browserFolderId])"), "New file action must update when the current Drive browser folder changes.");
+expect(app.includes("browserFolderId"), "New file action must update when the current Drive browser folder changes.");
+expect(app.includes("confirmLeaveDocument"), "New file action must guard unsaved changes.");
 expect(sidebar.includes("type: \"drive:rename-file\""), "Drive browser must rename files.");
 expect(sidebar.includes("async function renameFile") && sidebar.includes("setError(describeUnknownError(failure))"), "Drive browser rename failures must surface runtime errors.");
 expect(sidebar.includes("setError(null);"), "Successful Drive browser actions must clear stale errors.");
-expect(sidebar.includes("normalizeMarkdownFileName(newName)"), "Drive browser must normalize names when creating files.");
-expect(sidebar.includes("normalizeMarkdownFileName(name)"), "Drive browser must normalize names when renaming files.");
+expect(sidebar.includes("normalizeSupportedFileName(newName, newFileKind)"), "Drive browser must normalize names when creating files.");
+expect(sidebar.includes("normalizeSupportedFileName(name, kind)"), "Drive browser must normalize names when renaming files.");
+expect(sidebar.includes("const [newFileKind, setNewFileKind]"), "Drive browser must let users choose a new file kind.");
+expect(sidebar.includes("No supported files in this folder."), "Drive browser empty state must mention supported files.");
+expect(sidebar.includes("mimeTypeForFileName(created.name)"), "Drive browser must store MIME types from file names.");
 expect(sidebar.includes("type: \"drive:trash-file\""), "Drive browser must trash files.");
-expect(sidebar.includes("async function trashFile") && sidebar.includes("onClick={() => void trashFile(file.id)}"), "Drive browser trash failures must use a handled action.");
-expect(sidebar.includes("async function toggleFolder") && sidebar.includes("finally {\n      setExpandingFolderId(null);\n      finishDriveAction();\n    }"), "Drive browser folder expansion failures must clear busy state.");
+expect(sidebar.includes("async function trashFile") && sidebar.includes("void trashFile(file.id, file.name)"), "Drive browser trash failures must use a handled action.");
+expect(sidebar.includes("Move \"") && sidebar.includes("to trash?"), "Drive browser trash must confirm before deleting.");
+expect(sidebar.includes("onDriveFailure"), "Drive browser must route auth and rate-limit failures through the shared modal.");
+expect(sidebar.includes("reportDriveBrowserFailure"), "Drive browser must escalate handled Drive failures to the app shell.");
+expect(sidebar.includes("activeFileId"), "Drive browser must highlight the open file.");
+expect(sidebar.includes("async function toggleFolder") && includesAll(sidebar, ["finally {", "setExpandingFolderId(null);", "finishDriveAction();"]), "Drive browser folder expansion failures must clear busy state.");
 expect(sidebar.includes("disabled={actionBusy}"), "Drive browser mutation controls must be disabled while actions are in flight.");
 expect(sidebar.includes("aria-busy={busy || actionBusy}"), "Drive browser file list must expose load and action busy state.");
 expect(sidebar.includes("function describeUnknownError(failure: unknown): string"), "Drive browser runtime failures must have a stable fallback message.");

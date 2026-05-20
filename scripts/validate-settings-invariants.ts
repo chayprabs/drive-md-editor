@@ -1,13 +1,13 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { readSource } from "./invariant-helpers";
 
 const root = resolve(import.meta.dirname, "..");
-const appSource = await readFile(resolve(root, "src/app/main.tsx"), "utf8");
-const settingsSource = await readFile(resolve(root, "src/shared/settings.ts"), "utf8");
-const typesSource = await readFile(resolve(root, "src/shared/types.ts"), "utf8");
-const optionsSource = await readFile(resolve(root, "src/options/main.tsx"), "utf8");
-const backgroundSource = await readFile(resolve(root, "src/background/index.ts"), "utf8");
-const messagesSource = await readFile(resolve(root, "src/shared/messages.ts"), "utf8");
+const appSource = await readSource(resolve(root, "src/app/main.tsx"));
+const settingsSource = await readSource(resolve(root, "src/shared/settings.ts"));
+const typesSource = await readSource(resolve(root, "src/shared/types.ts"));
+const optionsSource = await readSource(resolve(root, "src/options/main.tsx"));
+const backgroundSource = await readSource(resolve(root, "src/background/index.ts"));
+const messagesSource = await readSource(resolve(root, "src/shared/messages.ts"));
 const failures: string[] = [];
 
 const settingKeys = ["theme", "autosaveInterval", "vimMode", "softWrap", "lastFolderId", "onboardingComplete"];
@@ -66,6 +66,8 @@ expect(appSource.includes("title: \"Settings failed to save\""), "Editor setting
 expect(appSource.includes("const previous = settings") && appSource.includes("setSettings(previous)"), "Editor toolbar settings must roll back optimistic changes after failed saves.");
 expect(appSource.includes("describeUnknownError(failure)"), "Editor settings failures must include a useful error detail.");
 expect(appSource.includes("}, [pushToast]);"), "Editor settings load effect must include the toast dependency.");
+expect(appSource.includes("chrome.storage.onChanged.addListener(syncSettings)"), "Editor must live-sync settings when the options page changes them.");
+expect(optionsSource.includes("chrome.storage.onChanged.addListener(syncSettings)"), "Options page must live-sync settings when another MarkDrive tab changes them.");
 
 if (failures.length > 0) {
   console.error(failures.map((failure) => `- ${failure}`).join("\n"));

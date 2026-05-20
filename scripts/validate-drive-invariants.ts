@@ -1,13 +1,19 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { readSource } from "./invariant-helpers";
 
 const root = resolve(import.meta.dirname, "..");
-const source = await readFile(resolve(root, "src/background/drive-api.ts"), "utf8");
-const driveNames = await readFile(resolve(root, "src/shared/drive-names.ts"), "utf8");
+const source = await readSource(resolve(root, "src/background/drive-api.ts"));
+const driveNames = await readSource(resolve(root, "src/shared/drive-names.ts"));
+const fileTypes = await readSource(resolve(root, "src/shared/file-types.ts"));
 const failures: string[] = [];
 
-expect(source.includes("import { normalizeDriveAssetName, normalizeMarkdownFileName } from \"../shared/drive-names\""), "Drive API must use shared Drive filename normalization.");
-expect(driveNames.includes("export function normalizeMarkdownFileName"), "Shared Drive filename normalizer must exist.");
+expect(source.includes("import { isDriveResourceId } from \"../shared/drive-url\""), "Drive API must validate Drive resource ids through shared helpers.");
+expect(source.includes("function assertDriveResourceId"), "Drive API must reject malformed Drive file ids before requests.");
+expect(source.includes("function assertOptionalDriveResourceId"), "Drive API must reject malformed optional Drive folder ids before requests.");
+expect(source.includes("Invalid ${label}."), "Drive API must surface invalid Drive id failures as structured 400 errors.");
+expect(driveNames.includes("export function normalizeDriveFileName"), "Shared Drive filename normalizer must exist.");
+expect(driveNames.includes("export function normalizeMarkdownFileName"), "Shared Markdown filename normalizer must exist.");
+expect(fileTypes.includes("export function driveNameContainsClauses"), "Supported file listing must build Drive name clauses from extensions.");
 expect(driveNames.includes("export function normalizeDriveAssetName"), "Shared Drive asset filename normalizer must exist.");
 expect(driveNames.includes("return \"Untitled.md\""), "Markdown filename normalization must reject empty names.");
 expect(driveNames.includes("return fallback"), "Drive asset filename normalization must reject empty or reserved names.");
@@ -26,12 +32,14 @@ if (saveMarkdownFile) {
   expect(/`\$\{uploadBase\}\/files\/\$\{fileId\}\?uploadType=media/.test(saveMarkdownFile), "saveMarkdownFile must upload media to the existing fileId.");
   expect(/method:\s*"PATCH"/.test(saveMarkdownFile), "saveMarkdownFile must PATCH the existing Drive file.");
   expect(!/method:\s*"POST"/.test(saveMarkdownFile), "saveMarkdownFile must not POST, which would create a duplicate file.");
+  expect(saveMarkdownFile.includes("mimeTypeForFileName(current.name)"), "saveMarkdownFile must upload with the correct MIME type.");
 }
 
 const createMarkdownFile = extractFunction("createMarkdownFile");
 expect(Boolean(createMarkdownFile), "createMarkdownFile must exist.");
 if (createMarkdownFile) {
-  expect(createMarkdownFile.includes("name: normalizeMarkdownFileName(name)"), "createMarkdownFile must normalize Markdown file names.");
+  expect(createMarkdownFile.includes("normalizeDriveFileName(name)"), "createMarkdownFile must normalize supported file names.");
+  expect(createMarkdownFile.includes("mimeTypeForFileName(normalizedName)"), "createMarkdownFile must choose MIME types from normalized file names.");
   expect(/`\$\{uploadBase\}\/files\?uploadType=multipart/.test(createMarkdownFile), "createMarkdownFile must use multipart upload.");
   expect(/method:\s*"POST"/.test(createMarkdownFile), "createMarkdownFile must POST only for new document creation.");
 }
@@ -39,13 +47,14 @@ if (createMarkdownFile) {
 const renameFile = extractFunction("renameFile");
 expect(Boolean(renameFile), "renameFile must exist.");
 if (renameFile) {
-  expect(renameFile.includes("name: normalizeMarkdownFileName(name)"), "renameFile must normalize Markdown file names.");
+  expect(renameFile.includes("normalizeDriveFileName(name)"), "renameFile must normalize supported file names.");
 }
 
 const listMarkdownFiles = extractFunction("listMarkdownFiles");
 expect(Boolean(listMarkdownFiles), "listMarkdownFiles must exist.");
 if (listMarkdownFiles) {
-  expect(listMarkdownFiles.includes("driveQueryLiteral(\".md\")"), "Markdown file listing must quote the .md query literal through the shared helper.");
+  expect(listMarkdownFiles.includes("driveNameContainsClauses()"), "Supported file listing must query all supported extensions.");
+  expect(listMarkdownFiles.includes("isSupportedFileName(file.name)"), "Supported file listing must filter results to supported extensions.");
   expect(listMarkdownFiles.includes("driveQueryLiteral(folderId)"), "Markdown file listing must quote folder ids through the shared helper.");
   expect(listMarkdownFiles.includes("driveQueryLiteral(query.trim())"), "Markdown file search must quote user search text through the shared helper.");
 }

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const css = await readFile(resolve(root, "src/app/styles.css"), "utf8");
+const css = (await readFile(resolve(root, "src/app/styles.css"), "utf8")).replace(/\r\n/g, "\n");
 const failures: string[] = [];
 
 for (const theme of ["light", "dracula", "nord", "solarized"]) {

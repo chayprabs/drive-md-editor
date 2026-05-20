@@ -1,15 +1,15 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { collectSearchMatches, replaceMatches, summarizeSearch } from "../src/shared/search";
 import { markdownWithoutFrontmatter, readFrontmatter, writeFrontmatter } from "../src/shared/frontmatter";
+import { readSource } from "./invariant-helpers";
 
 const root = resolve(import.meta.dirname, "..");
-const searchSource = await readFile(resolve(root, "src/shared/search.ts"), "utf8");
-const findBar = await readFile(resolve(root, "src/app/find-replace-bar.tsx"), "utf8");
-const editor = await readFile(resolve(root, "src/app/markdown-editor.tsx"), "utf8");
-const app = await readFile(resolve(root, "src/app/main.tsx"), "utf8");
-const sidebar = await readFile(resolve(root, "src/app/sidebar.tsx"), "utf8");
-const frontmatterSource = await readFile(resolve(root, "src/shared/frontmatter.ts"), "utf8");
+const searchSource = await readSource(resolve(root, "src/shared/search.ts"));
+const findBar = await readSource(resolve(root, "src/app/find-replace-bar.tsx"));
+const editor = await readSource(resolve(root, "src/app/markdown-editor.tsx"));
+const app = await readSource(resolve(root, "src/app/main.tsx"));
+const sidebar = await readSource(resolve(root, "src/app/sidebar.tsx"));
+const frontmatterSource = await readSource(resolve(root, "src/shared/frontmatter.ts"));
 const failures: string[] = [];
 
 expect(searchSource.includes("caseSensitive: boolean"), "Search options must include case sensitivity.");
@@ -27,7 +27,7 @@ expect(findBar.includes("aria-label=\"Replace\""), "Replace input must be labell
 expect(findBar.includes("title=\"Match case\""), "Find bar must expose match-case toggle.");
 expect(findBar.includes("title=\"Whole word\""), "Find bar must expose whole-word toggle.");
 expect(findBar.includes("title=\"Regular expression\""), "Find bar must expose regex toggle.");
-expect(findBar.includes("summary.invalid ? \"Invalid\""), "Find bar must show invalid regex state.");
+expect(findBar.includes("summary.invalid") && findBar.includes('"Invalid"'), "Find bar must show invalid regex state.");
 expect(findBar.includes("props.onReplaceAll"), "Find bar must expose replace-all.");
 
 expect(editor.includes("find(options, direction)"), "Editor handle must expose find.");

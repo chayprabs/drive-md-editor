@@ -38,6 +38,9 @@ function createMarkdownIt(codeHighlighter?: CodeHighlighter): MarkdownIt {
     }
   });
 
+  md.renderer.rules.s_open = () => "<del>";
+  md.renderer.rules.s_close = () => "</del>";
+
   md.use(footnote)
     .use(emoji)
     .use(anchor, {
@@ -68,6 +71,11 @@ function createMarkdownIt(codeHighlighter?: CodeHighlighter): MarkdownIt {
       }
     });
   }
+
+  md.renderer.rules.del_open = () => "<del>";
+  md.renderer.rules.del_close = () => "</del>";
+  md.renderer.rules.s_open = () => "<del>";
+  md.renderer.rules.s_close = () => "</del>";
 
   return md;
 }

@@ -20,12 +20,17 @@ export function extractDriveFolderIdFromUrl(url: string): string | null {
   }
 }
 
+export function isDriveResourceId(value: string): boolean {
+  return /^[A-Za-z0-9_-]{10,100}$/.test(value);
+}
+
 export function cleanDriveId(value: string | null | undefined): string | null {
   if (!value?.trim()) return null;
   try {
     const decoded = decodeURIComponent(value.trim()).trim();
-    return decoded ? decoded : null;
+    return isDriveResourceId(decoded) ? decoded : null;
   } catch {
-    return value.trim();
+    const trimmed = value.trim();
+    return isDriveResourceId(trimmed) ? trimmed : null;
   }
 }

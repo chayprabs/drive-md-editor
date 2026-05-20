@@ -13,13 +13,14 @@ export interface SearchMatch {
 
 export interface SearchSummary {
   matches: number;
+  index: number;
   invalid: boolean;
 }
 
 export function summarizeSearch(text: string, options: SearchOptions): SearchSummary {
   const pattern = createSearchPattern(options);
-  if (!pattern) return { matches: 0, invalid: options.regex && options.query.length > 0 };
-  return { matches: collectMatches(text, pattern).length, invalid: false };
+  if (!pattern) return { matches: 0, index: 0, invalid: options.regex && options.query.length > 0 };
+  return { matches: collectMatches(text, pattern).length, index: 0, invalid: false };
 }
 
 export function collectSearchMatches(text: string, options: SearchOptions): SearchMatch[] {

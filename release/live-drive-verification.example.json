@@ -1,0 +1,101 @@
+{
+  "_notice": "TEMPLATE ONLY. Replace every placeholder, add real files under output/live, then copy to release/live-drive-verification.json. pnpm release:verify rejects this file as-is.",
+  "clientId": "REPLACE-WITH-PRODUCTION-CLIENT-ID.apps.googleusercontent.com",
+  "extensionId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "tester": "replace-with-your-email@your-domain.com",
+  "browser": "Chrome 0.0.0.0",
+  "driveAccount": "replace-with-drive-account@your-domain.com",
+  "completedAt": "1970-01-01T00:00:00.000Z",
+  "checks": [
+    {
+      "id": "drive-grid-open",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/drive-grid-open.png"
+    },
+    {
+      "id": "drive-list-open",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/drive-list-open.png"
+    },
+    {
+      "id": "drive-context-open",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/drive-context-open.png"
+    },
+    {
+      "id": "ctrl-s-save-in-place",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/ctrl-s-save-in-place.png"
+    },
+    {
+      "id": "autosave-in-place",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/autosave-in-place.png"
+    },
+    {
+      "id": "conflict-modal",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/conflict-modal.png"
+    },
+    {
+      "id": "vim-w-save",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/vim-w-save.png"
+    },
+    {
+      "id": "new-file-current-folder",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/new-file-current-folder.png"
+    },
+    {
+      "id": "drive-browser",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/drive-browser.png"
+    },
+    {
+      "id": "image-upload",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/image-upload.png"
+    },
+    {
+      "id": "export-markdown",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/export-markdown.md"
+    },
+    {
+      "id": "export-html",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/export-markdown.html"
+    },
+    {
+      "id": "export-pdf",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/export-markdown.pdf"
+    },
+    {
+      "id": "themes",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/themes.png"
+    },
+    {
+      "id": "layout-and-guards",
+      "result": "pass",
+      "completedAt": "1970-01-01T00:00:00.000Z",
+      "evidence": "output/live/layout-and-guards.png"
+    }
+  ]
+}

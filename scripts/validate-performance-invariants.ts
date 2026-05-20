@@ -1,11 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { readSource } from "./invariant-helpers";
 
 const root = resolve(import.meta.dirname, "..");
-const preview = await readFile(resolve(root, "src/app/preview-pane.tsx"), "utf8");
-const viteConfig = await readFile(resolve(root, "vite.config.ts"), "utf8");
-const bundleGate = await readFile(resolve(root, "scripts/assert-bundle-size.ts"), "utf8");
-const contentGate = await readFile(resolve(root, "scripts/validate-content-invariants.ts"), "utf8");
+const preview = await readSource(resolve(root, "src/app/preview-pane.tsx"));
+const viteConfig = await readSource(resolve(root, "vite.config.ts"));
+const bundleGate = await readSource(resolve(root, "scripts/assert-bundle-size.ts"));
+const contentGate = await readSource(resolve(root, "scripts/validate-content-invariants.ts"));
 const failures: string[] = [];
 
 expect(preview.includes("window.setTimeout(() => setPreviewMarkdown(markdown), 50)"), "Preview markdown updates must be debounced to 50ms.");

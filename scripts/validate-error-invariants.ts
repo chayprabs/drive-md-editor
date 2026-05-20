@@ -1,14 +1,14 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { readSource } from "./invariant-helpers";
 
 const root = resolve(import.meta.dirname, "..");
-const app = await readFile(resolve(root, "src/app/main.tsx"), "utf8");
-const background = await readFile(resolve(root, "src/background/index.ts"), "utf8");
-const driveApi = await readFile(resolve(root, "src/background/drive-api.ts"), "utf8");
-const modal = await readFile(resolve(root, "src/app/drive-issue-modal.tsx"), "utf8");
-const queue = await readFile(resolve(root, "src/shared/offline-queue.ts"), "utf8");
-const preview = await readFile(resolve(root, "src/app/preview-pane.tsx"), "utf8");
-const messages = await readFile(resolve(root, "src/shared/messages.ts"), "utf8");
+const app = await readSource(resolve(root, "src/app/main.tsx"));
+const background = await readSource(resolve(root, "src/background/index.ts"));
+const driveApi = await readSource(resolve(root, "src/background/drive-api.ts"));
+const modal = await readSource(resolve(root, "src/app/drive-issue-modal.tsx"));
+const queue = await readSource(resolve(root, "src/shared/offline-queue.ts"));
+const preview = await readSource(resolve(root, "src/app/preview-pane.tsx"));
+const messages = await readSource(resolve(root, "src/shared/messages.ts"));
 const failures: string[] = [];
 
 for (const status of ["401", "403", "404", "429"]) {
@@ -40,8 +40,11 @@ expect(app.includes("title: \"Authentication failed\", detail: describeUnknownEr
 expect(app.includes("title: \"Queued save retry failed\""), "Queued save runtime retry failures must show user feedback.");
 expect(app.includes("title: \"Offline queue unavailable\""), "Offline queue load failures must show user feedback.");
 expect(app.includes("title: \"Queued save synced but not cleared\""), "Offline queue removal failures must show user feedback.");
-expect(app.includes("showDriveIssue(response.status, detail, response.retryAfterMs)"), "Open failures must use the same Drive issue modal path as save failures.");
-expect(app.includes("const showDriveIssue = useCallback"), "Drive issue modal routing must be reusable across open and save failures.");
+expect(app.includes("handleDriveFailure(response.status, detail, response.retryAfterMs"), "Open failures must use the same Drive issue modal path as save failures.");
+expect(app.includes("const handleDriveFailure = useCallback"), "Drive issue modal routing must be reusable across open and save failures.");
+expect(app.includes("driveIssueRetryRef"), "Drive issue retries must preserve the action that failed.");
+expect(modal.includes("remainingMs"), "Rate-limit modal must show a live retry countdown.");
+expect(modal.includes("disabled={issue.kind === \"rate-limit\" && remainingMs > 0}"), "Rate-limit retry must stay disabled until the countdown completes.");
 expect(app.includes("pushToast({ tone: \"danger\", title: \"Image upload failed\""), "Image upload failures must show user feedback.");
 expect(app.includes("title: \"Preview rendering failed\""), "Preview hydration failures must show user feedback.");
 expect(preview.includes("onHydrationError(failure: unknown): void"), "Preview must expose a hydration failure callback.");
@@ -99,6 +102,7 @@ expect(background.includes("import { cleanDriveId, extractDriveFileIdFromUrl } f
 expect(background.includes("const cleanFileId = cleanDriveId(fileId);") && background.includes("const cleanFolderId = cleanDriveId(folderId);"), "Background editor URLs must normalize Drive ids before opening tabs.");
 expect(background.includes("const storedFileId = typeof target?.fileId === \"string\" ? cleanDriveId(target.fileId) : null;"), "Context menu session fallback must normalize stored file ids.");
 expect(background.includes("const storedFolderId = typeof target?.folderId === \"string\" ? cleanDriveId(target.folderId) : null;"), "Context menu session fallback must normalize stored folder ids.");
+expect(background.includes("throw new Error(\"MarkDrive could not determine which Drive file to open from this context.\")"), "Context menu fallback must fail clearly when no Drive file can be resolved.");
 expect(background.includes("record.type === \"drive:save-file\"") && background.includes("optionalDateString(record.previousModifiedTime)"), "Save requests must validate conflict metadata before use.");
 expect(background.includes("record.type === \"drive:upload-image\"") && background.includes("nonEmptyString(record.dataUrl)"), "Image upload requests must validate image payloads before use.");
 expect(background.includes("if (record.type === \"drive:get-file\") return nonEmptyString(record.fileId);"), "Open-file requests must reject blank Drive file ids.");
@@ -106,7 +110,8 @@ expect(background.includes("if (record.type === \"drive:rename-file\") return no
 expect(background.includes("void initializeExtension(reason)"), "Install-time background setup must be guarded.");
 expect(background.includes("void runBackgroundAction(() => openEditor(null, null))"), "Toolbar and command open actions must be guarded.");
 expect(background.includes("void runBackgroundAction(() => openFromContext"), "Context menu open actions must be guarded.");
-expect(background.includes("function reportBackgroundFailure"), "Background action failures must be reported.");
+expect(background.includes("async function flushOfflineQueue"), "Background worker must flush queued offline saves.");
+expect(background.includes("error.status === 409"), "Background offline flush must stop on save conflicts instead of retrying blindly.");
 expect(background.includes("chrome.action.setBadgeText({ text: \"!\" })"), "Background action failures must show an extension badge.");
 expect(background.includes("chrome.action.setTitle({ title: `MarkDrive error: ${message}` })"), "Background action failures must expose the error in the extension title.");
 expect(background.includes("function clearBackgroundFailure"), "Successful editor opens must clear background failure feedback.");
@@ -126,6 +131,11 @@ expect(queue.includes("chrome.storage.local.set({ [storageKey]: queue })"), "Off
 expect(queue.includes("attempts: existing?.attempts ?? 0"), "Offline queue must retain retry attempt counts.");
 expect(queue.includes("markQueuedSaveAttempt"), "Offline queue must record retry attempts.");
 expect(queue.includes("removeQueuedSave"), "Offline queue must remove synced saves.");
+expect(background.includes("chrome.runtime.onStartup.addListener"), "Background must flush offline saves when Chrome starts.");
+expect(background.includes("chrome.alarms.onAlarm.addListener"), "Background must retry offline saves on alarms.");
+expect(background.includes("flushOfflineQueue"), "Background must flush queued offline saves.");
+expect(background.includes("item.attempts >= maxOfflineRetryAttempts"), "Background offline flush must stop retrying exhausted saves.");
+expect(app.includes("maxOfflineRetryAttempts"), "App offline retry must honor the shared retry limit.");
 expect(queue.includes("const normalizedDocument = normalizeOpenDocument(document);"), "Offline queue writes must normalize documents before persistence.");
 expect(queue.includes("const id = typeof item.id === \"string\" ? item.id.trim() : \"\";"), "Offline queue must trim queued save ids.");
 expect(queue.includes("Number.isFinite(Date.parse(item.queuedAt))"), "Offline queue must reject invalid queued timestamps.");

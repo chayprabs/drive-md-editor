@@ -1,15 +1,15 @@
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { extractAtRule, readSource } from "./invariant-helpers";
 
 const root = resolve(import.meta.dirname, "..");
-const app = await readFile(resolve(root, "src/app/main.tsx"), "utf8");
-const preview = await readFile(resolve(root, "src/app/preview-pane.tsx"), "utf8");
-const css = await readFile(resolve(root, "src/app/styles.css"), "utf8");
+const app = await readSource(resolve(root, "src/app/main.tsx"));
+const preview = await readSource(resolve(root, "src/app/preview-pane.tsx"));
+const css = await readSource(resolve(root, "src/app/styles.css"));
 const failures: string[] = [];
 
-expect(app.includes("const exportMarkdown = useCallback"), "Markdown export action must exist.");
-expect(app.includes("downloadBlob(document.name, \"text/markdown\", document.markdown)"), "Markdown export must download the exact editor contents.");
-expect(app.includes("title: \"Markdown export failed\""), "Markdown export failures must show user feedback.");
+expect(app.includes("const exportMarkdown = useCallback"), "File export action must exist.");
+expect(app.includes("downloadBlob(document.name, mimeTypeForFileName(document.name), document.markdown)"), "File export must download the exact editor contents with the correct MIME type.");
+expect(app.includes("title: \"Markdown export failed\""), "File export failures must show user feedback.");
 expect(app.includes("anchor.download = sanitizeDownloadName(name)"), "Exports must sanitize unsafe local download filenames.");
 expect(app.includes("try {\n    anchor.href = url;"), "Exports must wrap synthetic download clicks for cleanup.");
 expect(app.includes("globalThis.document.body.append(anchor)"), "Exports must attach synthetic download links for browser compatibility.");
@@ -21,9 +21,11 @@ expect(app.includes("/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\..*)?$/i.test(cle
 expect(app.includes("function fallbackDownloadName(name: string): string"), "Export filename sanitizer must provide stable extension-aware fallbacks.");
 expect(app.includes("return /\\.html$/i.test(name) ? \"MarkDrive-export.html\" : \"MarkDrive-export.md\";"), "Export filename fallback must preserve HTML and Markdown export extensions.");
 expect(app.includes("const exportHtml = useCallback"), "HTML export action must exist.");
-expect(app.includes("buildSelfContainedHtml(document.name, document.markdown, hljs, highlightCss)"), "HTML export must render the current document with a highlighter.");
+expect(app.includes("buildSelfContainedHtml(document.name, document.markdown, hljs, highlightCss, settings.theme)"), "HTML export must render the current document with a highlighter.");
 expect(app.includes("import(\"./highlight-languages\")"), "HTML export must lazy-load the highlight registry.");
-expect(app.includes("import(\"highlight.js/styles/github-dark.css?inline\")"), "HTML export must inline highlight CSS.");
+expect(app.includes("highlight.js/styles/") && app.includes(".css?inline"), "HTML export must inline theme-aware highlight CSS.");
+expect(app.includes("const highlightTheme ="), "HTML export must select highlight CSS based on theme.");
+expect(app.includes("function exportPageTheme"), "HTML export must include theme-aware page styling.");
 expect(app.includes("downloadBlob(`${document.name.replace(/\\.md$/i, \"\")}.html`, \"text/html\", html)"), "HTML export must download an HTML file.");
 expect(app.includes("pushToast({ tone: \"danger\", title: \"HTML export failed\""), "HTML export failures must show user feedback.");
 
@@ -42,13 +44,20 @@ expect(app.includes("const exportPdf = useCallback"), "PDF export action must ex
 expect(app.includes("setViewMode(\"preview\")"), "PDF export must switch to preview before printing.");
 expect(app.includes("setPdfPrintRequest(requestId)"), "PDF export must request a fresh preview render before printing.");
 expect(app.includes("pendingPrintRequestRef.current !== requestId"), "PDF export must ignore stale preview print-ready signals.");
+expect(app.includes("schedulePrintViewRestore"), "PDF export must restore the prior layout after printing.");
+expect(app.includes("Print export timed out"), "PDF export must recover when preview print preparation stalls.");
 expect(preview.includes("printRequestId?: number"), "Preview must accept explicit PDF print requests.");
 expect(preview.includes("if (printRequestId > 0) setPreviewMarkdown(markdown);"), "Preview must flush the latest markdown for PDF print requests.");
 expect(preview.includes("onPrintReady?.(printRequestId)"), "Preview must signal when the requested PDF render is ready.");
 expect(app.includes("window.print();"), "PDF export must call print after preview renders.");
+expect(app.includes("viewModeBeforePrintRef"), "PDF export must remember the prior view mode.");
+expect(app.includes("afterprint"), "PDF export must restore the prior view mode after printing.");
+expect(app.includes("schedulePrintViewRestore"), "PDF export must restore view mode when print fails or times out.");
 expect(app.includes("title: \"PDF export failed\""), "PDF export failures must show user feedback.");
+expect(app.includes("title: \"Exported file\""), "File export successes must show user feedback.");
+expect(app.includes("title: \"Print dialog opened\""), "PDF export successes must show user feedback.");
 
-for (const label of ["Export Markdown", "Export HTML", "Export PDF"]) {
+for (const label of ["Export file", "Export HTML", "Export PDF"]) {
   expect(app.includes(`title="${label}"`) || app.includes(`> ${label}<`), `Toolbar must expose ${label}.`);
   expect(app.includes(`role="menuitem"`) && app.includes(label), `Overflow menu must expose ${label}.`);
 }
@@ -58,7 +67,7 @@ expect(preview.includes("className=\"print-toc\""), "Preview must render a print
 expect(preview.includes("printFrontmatter"), "Preview print header must use frontmatter.");
 expect(preview.includes("printOutline"), "Preview print ToC must use outline headings.");
 
-const printCss = extractAtRule("@media print");
+const printCss = extractAtRule(css, "@media print");
 expect(Boolean(printCss), "Print stylesheet must exist.");
 expect(printCss?.includes(".toolbar,") && printCss.includes("display: none"), "Print CSS must hide toolbar chrome.");
 expect(printCss?.includes(".editor-host") && printCss.includes("display: none"), "Print CSS must hide the editor.");
@@ -72,20 +81,6 @@ if (failures.length > 0) {
 }
 
 console.log("Export invariants passed.");
-
-function extractAtRule(rule: string): string | null {
-  const start = css.indexOf(rule);
-  if (start === -1) return null;
-  const bodyStart = css.indexOf("{", start);
-  if (bodyStart === -1) return null;
-  let depth = 0;
-  for (let index = bodyStart; index < css.length; index += 1) {
-    if (css[index] === "{") depth += 1;
-    if (css[index] === "}") depth -= 1;
-    if (depth === 0) return css.slice(bodyStart + 1, index);
-  }
-  return null;
-}
 
 function expect(condition: boolean | undefined, message: string): void {
   if (!condition) failures.push(message);
