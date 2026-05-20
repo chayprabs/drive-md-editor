@@ -21,9 +21,11 @@ expect(app.includes("/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\..*)?$/i.test(cle
 expect(app.includes("function fallbackDownloadName(name: string): string"), "Export filename sanitizer must provide stable extension-aware fallbacks.");
 expect(app.includes("return /\\.html$/i.test(name) ? \"MarkDrive-export.html\" : \"MarkDrive-export.md\";"), "Export filename fallback must preserve HTML and Markdown export extensions.");
 expect(app.includes("const exportHtml = useCallback"), "HTML export action must exist.");
-expect(app.includes("buildSelfContainedHtml(document.name, document.markdown, hljs, highlightCss)"), "HTML export must render the current document with a highlighter.");
+expect(app.includes("buildSelfContainedHtml(document.name, document.markdown, hljs, highlightCss, settings.theme)"), "HTML export must render the current document with a highlighter.");
 expect(app.includes("import(\"./highlight-languages\")"), "HTML export must lazy-load the highlight registry.");
-expect(app.includes("import(\"highlight.js/styles/github-dark.css?inline\")"), "HTML export must inline highlight CSS.");
+expect(app.includes("highlight.js/styles/") && app.includes(".css?inline"), "HTML export must inline theme-aware highlight CSS.");
+expect(app.includes("const highlightTheme ="), "HTML export must select highlight CSS based on theme.");
+expect(app.includes("function exportPageTheme"), "HTML export must include theme-aware page styling.");
 expect(app.includes("downloadBlob(`${document.name.replace(/\\.md$/i, \"\")}.html`, \"text/html\", html)"), "HTML export must download an HTML file.");
 expect(app.includes("pushToast({ tone: \"danger\", title: \"HTML export failed\""), "HTML export failures must show user feedback.");
 
@@ -42,11 +44,18 @@ expect(app.includes("const exportPdf = useCallback"), "PDF export action must ex
 expect(app.includes("setViewMode(\"preview\")"), "PDF export must switch to preview before printing.");
 expect(app.includes("setPdfPrintRequest(requestId)"), "PDF export must request a fresh preview render before printing.");
 expect(app.includes("pendingPrintRequestRef.current !== requestId"), "PDF export must ignore stale preview print-ready signals.");
+expect(app.includes("schedulePrintViewRestore"), "PDF export must restore the prior layout after printing.");
+expect(app.includes("Print export timed out"), "PDF export must recover when preview print preparation stalls.");
 expect(preview.includes("printRequestId?: number"), "Preview must accept explicit PDF print requests.");
 expect(preview.includes("if (printRequestId > 0) setPreviewMarkdown(markdown);"), "Preview must flush the latest markdown for PDF print requests.");
 expect(preview.includes("onPrintReady?.(printRequestId)"), "Preview must signal when the requested PDF render is ready.");
 expect(app.includes("window.print();"), "PDF export must call print after preview renders.");
+expect(app.includes("viewModeBeforePrintRef"), "PDF export must remember the prior view mode.");
+expect(app.includes("afterprint"), "PDF export must restore the prior view mode after printing.");
+expect(app.includes("schedulePrintViewRestore"), "PDF export must restore view mode when print fails or times out.");
 expect(app.includes("title: \"PDF export failed\""), "PDF export failures must show user feedback.");
+expect(app.includes("title: \"Exported Markdown\""), "Markdown export successes must show user feedback.");
+expect(app.includes("title: \"Print dialog opened\""), "PDF export successes must show user feedback.");
 
 for (const label of ["Export Markdown", "Export HTML", "Export PDF"]) {
   expect(app.includes(`title="${label}"`) || app.includes(`> ${label}<`), `Toolbar must expose ${label}.`);

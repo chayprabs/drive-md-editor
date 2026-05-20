@@ -312,6 +312,11 @@ button[aria-pressed="true"] {
   gap: 4px;
 }
 
+.file-row.active > button:first-child {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
 .file-row > button:first-child,
 .folder-row {
   display: flex;
@@ -566,6 +571,11 @@ button[aria-pressed="true"] {
 
 .cm-scroller {
   font-family: "JetBrains Mono", ui-monospace, monospace !important;
+}
+
+.cm-searchMatch {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 2px;
 }
 
 .preview-pane {

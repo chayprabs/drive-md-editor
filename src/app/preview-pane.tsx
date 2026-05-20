@@ -1,7 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { readFrontmatter } from "../shared/frontmatter";
 import { extractOutline, renderMarkdown } from "../shared/markdown";
 import type { ThemeName } from "../shared/types";
+
+export interface PreviewPaneHandle {
+  scrollToHeading(id: string): void;
+}
 
 interface Props {
   markdown: string;
@@ -12,7 +16,7 @@ interface Props {
   onPrintReady?(requestId: number): void;
 }
 
-export function PreviewPane({ markdown, theme, onChange, onHydrationError, printRequestId = 0, onPrintReady }: Props): React.ReactElement {
+export const PreviewPane = forwardRef<PreviewPaneHandle, Props>(function PreviewPane({ markdown, theme, onChange, onHydrationError, printRequestId = 0, onPrintReady }, ref) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const hydrationVersionRef = useRef(0);
   const lastPrintReadyRef = useRef(0);
@@ -73,6 +77,15 @@ export function PreviewPane({ markdown, theme, onChange, onHydrationError, print
     return () => host.removeEventListener("click", click);
   }, [markdown, onChange]);
 
+  useImperativeHandle(ref, () => ({
+    scrollToHeading(id) {
+      const host = hostRef.current;
+      if (!host) return;
+      const target = host.querySelector(`#${CSS.escape(id)}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }), []);
+
   return (
     <article className="preview-pane" ref={hostRef}>
       <header className="print-header">
@@ -94,7 +107,7 @@ export function PreviewPane({ markdown, theme, onChange, onHydrationError, print
       <div dangerouslySetInnerHTML={{ __html: html }} />
     </article>
   );
-}
+});
 
 async function hydrateMathAndDiagrams(
   host: HTMLElement,

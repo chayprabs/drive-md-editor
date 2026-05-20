@@ -3,18 +3,22 @@ import { basicSetup, EditorView } from "codemirror";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, foldGutter, indentOnInput, syntaxHighlighting } from "@codemirror/language";
-import { searchKeymap, openSearchPanel } from "@codemirror/search";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
-import { drawSelection, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
+import { searchKeymap } from "@codemirror/search";
+import { Compartment, EditorState, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
+import { Decoration, type DecorationSet, drawSelection, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
 import { classHighlighter } from "@lezer/highlight";
 import { Vim, vim } from "@replit/codemirror-vim";
 import { collectSearchMatches, createSearchPattern, replaceMatches, type SearchOptions } from "../shared/search";
 
+export interface FindResult {
+  total: number;
+  index: number;
+}
+
 export interface MarkdownEditorHandle {
   formatSelection(kind: "bold" | "italic" | "link"): void;
   insertText(text: string): void;
-  openSearch(): void;
-  find(options: SearchOptions, direction: "next" | "previous"): number;
+  find(options: SearchOptions, direction: "next" | "previous"): FindResult;
   replaceCurrent(options: SearchOptions, replacement: string): number;
   replaceAll(options: SearchOptions, replacement: string): number;
   goToLine(line: number): void;
@@ -24,6 +28,7 @@ interface Props {
   markdown: string;
   vimMode: boolean;
   softWrap: boolean;
+  searchHighlight: SearchOptions | null;
   onChange(markdown: string): void;
   onSave(): void;
   onVimSave(): void;
@@ -37,6 +42,27 @@ interface Props {
 
 const wrapCompartment = new Compartment();
 const vimCompartment = new Compartment();
+const setSearchHighlight = StateEffect.define<SearchOptions | null>();
+const searchHighlightField = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none;
+  },
+  update(decorations, transaction) {
+    for (const effect of transaction.effects) {
+      if (effect.is(setSearchHighlight)) {
+        const options = effect.value;
+        if (!options?.query) return Decoration.none;
+        const matches = collectSearchMatches(transaction.state.doc.toString(), options);
+        return Decoration.set(
+          matches.map((match) => Decoration.mark({ class: "cm-searchMatch" }).range(match.from, match.to)),
+          true
+        );
+      }
+    }
+    return decorations.map(transaction.changes);
+  },
+  provide: (field) => EditorView.decorations.from(field)
+});
 let activeVimSave: (() => void) | null = null;
 Vim.defineEx("write", "w", () => activeVimSave?.());
 
@@ -72,8 +98,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
     const view = viewRef.current;
     if (!view || view.state.doc.toString() === props.markdown) return;
     syncingFromPropsRef.current = true;
+    const { anchor, head } = view.state.selection.main;
+    const length = props.markdown.length;
     view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: props.markdown }
+      changes: { from: 0, to: view.state.doc.length, insert: props.markdown },
+      selection: { anchor: Math.min(anchor, length), head: Math.min(head, length) },
+      annotations: Transaction.addToHistory.of(false)
     });
     syncingFromPropsRef.current = false;
   }, [props.markdown]);
@@ -88,6 +118,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
       ]
     });
   }, [props.softWrap, props.vimMode]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({ effects: setSearchHighlight.of(props.searchHighlight) });
+  }, [props.searchHighlight]);
 
   useImperativeHandle(ref, () => ({
     formatSelection(kind) {
@@ -107,13 +143,9 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
       view.dispatch({ changes: { from: selection.from, to: selection.to, insert: text } });
       view.focus();
     },
-    openSearch() {
-      const view = viewRef.current;
-      if (view) openSearchPanel(view);
-    },
     find(options, direction) {
       const view = viewRef.current;
-      if (!view) return 0;
+      if (!view) return { total: 0, index: 0 };
       return selectSearchMatch(view, options, direction);
     },
     replaceCurrent(options, replacement) {
@@ -156,7 +188,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
     }
   }), []);
 
-  return <div className="editor-host" ref={hostRef} />;
+  return <div className="editor-host" ref={hostRef} role="textbox" aria-label="Markdown source" aria-multiline="true" />;
 });
 
 function editorExtensions(getProps: () => Props, isSyncingFromProps: () => boolean, activateVimSave: () => void): Extension[] {
@@ -167,6 +199,7 @@ function editorExtensions(getProps: () => Props, isSyncingFromProps: () => boole
     history(),
     drawSelection(),
     highlightActiveLine(),
+    searchHighlightField,
     bracketMatching(),
     indentOnInput(),
     syntaxHighlighting(classHighlighter),
@@ -208,6 +241,25 @@ function editorExtensions(getProps: () => Props, isSyncingFromProps: () => boole
         key: "Mod-\\",
         run() {
           getProps().onToggleView();
+          return true;
+        }
+      },
+      {
+        key: "Mod-f",
+        run() {
+          getProps().onOpenFind();
+          return true;
+        }
+      },
+      {
+        key: "Mod-g",
+        run(view) {
+          const line = window.prompt("Go to line:");
+          if (!line) return true;
+          const parsed = Number.parseInt(line, 10);
+          if (!Number.isFinite(parsed) || parsed < 1) return true;
+          const target = view.state.doc.line(Math.min(parsed, view.state.doc.lines));
+          view.dispatch({ selection: { anchor: target.from }, effects: EditorView.scrollIntoView(target.from, { y: "center" }) });
           return true;
         }
       },
@@ -308,21 +360,22 @@ function normalizePastedHttpUrl(text: string): string | null {
   }
 }
 
-function selectSearchMatch(view: EditorView, options: SearchOptions, direction: "next" | "previous"): number {
+function selectSearchMatch(view: EditorView, options: SearchOptions, direction: "next" | "previous"): FindResult {
   const matches = collectSearchMatches(view.state.doc.toString(), options);
-  if (matches.length === 0) return 0;
+  if (matches.length === 0) return { total: 0, index: 0 };
   const selection = view.state.selection.main;
   const position = direction === "next" ? selection.to : selection.from;
-  const index = direction === "next"
+  const matchIndex = direction === "next"
     ? matches.findIndex((match) => match.from >= position)
     : findPreviousMatch(matches, position);
-  const target = matches[index === -1 ? direction === "next" ? 0 : matches.length - 1 : index];
+  const resolvedIndex = matchIndex === -1 ? direction === "next" ? 0 : matches.length - 1 : matchIndex;
+  const target = matches[resolvedIndex];
   view.dispatch({
     selection: { anchor: target.from, head: target.to },
     effects: EditorView.scrollIntoView(target.from, { y: "center" })
   });
   view.focus();
-  return matches.length;
+  return { total: matches.length, index: resolvedIndex + 1 };
 }
 
 function findPreviousMatch(matches: { to: number }[], position: number): number {

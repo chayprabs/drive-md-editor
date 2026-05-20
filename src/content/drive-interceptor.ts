@@ -6,12 +6,17 @@ const contextStorageKey = "markdrive.contextTarget";
 let scanScheduled = false;
 let noticeTimer: number | null = null;
 
+function isMarkdownLabel(label: string): boolean {
+  const normalized = label.trim();
+  return markdownNamePattern.test(normalized) || /\b[\w.-]+\.md(?:own)?\b/i.test(normalized);
+}
+
 document.addEventListener("click", (event) => {
   const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>("a[href]");
   if (!anchor) return;
   const fileId = extractDriveFileIdFromUrl(anchor.href) ?? extractFileIdFromElement(anchor);
   const label = anchor.getAttribute("aria-label") ?? anchor.textContent ?? "";
-  if (!fileId || !markdownNamePattern.test(label)) return;
+  if (!fileId || !isMarkdownLabel(label)) return;
 
   event.preventDefault();
   event.stopPropagation();
@@ -22,7 +27,7 @@ document.addEventListener("contextmenu", (event) => {
   const row = (event.target as Element | null)?.closest<HTMLElement>("a[href], [data-id], [aria-label]");
   if (!row) return;
   const label = row.getAttribute("aria-label") ?? row.textContent ?? "";
-  if (!markdownNamePattern.test(label)) return;
+  if (!isMarkdownLabel(label)) return;
   row.setAttribute("data-markdrive-markdown", "true");
   const fileId = row instanceof HTMLAnchorElement ? extractDriveFileIdFromUrl(row.href) : extractFileIdFromElement(row);
   if (fileId) {
@@ -46,8 +51,8 @@ function markMarkdownRows(): void {
   const startedAt = performance.now();
   const candidates = document.querySelectorAll<HTMLElement>("a[href], [data-id][aria-label], [data-tooltip]");
   for (const element of candidates) {
-    const label = element.getAttribute("aria-label") ?? element.getAttribute("data-tooltip") ?? "";
-    if (markdownNamePattern.test(label)) {
+    const label = element.getAttribute("aria-label") ?? element.getAttribute("data-tooltip") ?? element.textContent ?? "";
+    if (isMarkdownLabel(label)) {
       element.dataset.markdriveMarkdown = "true";
       element.style.setProperty("--markdrive-accent", "#2DD4BF");
     }

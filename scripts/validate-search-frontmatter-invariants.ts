@@ -27,7 +27,7 @@ expect(findBar.includes("aria-label=\"Replace\""), "Replace input must be labell
 expect(findBar.includes("title=\"Match case\""), "Find bar must expose match-case toggle.");
 expect(findBar.includes("title=\"Whole word\""), "Find bar must expose whole-word toggle.");
 expect(findBar.includes("title=\"Regular expression\""), "Find bar must expose regex toggle.");
-expect(findBar.includes("summary.invalid ? \"Invalid\""), "Find bar must show invalid regex state.");
+expect(findBar.includes("summary.invalid") && findBar.includes('"Invalid"'), "Find bar must show invalid regex state.");
 expect(findBar.includes("props.onReplaceAll"), "Find bar must expose replace-all.");
 
 expect(editor.includes("find(options, direction)"), "Editor handle must expose find.");

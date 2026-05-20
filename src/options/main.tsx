@@ -12,6 +12,10 @@ function Options(): React.ReactElement {
   const settingsRef = useRef<MarkDriveSettings>(defaultSettings);
 
   useEffect(() => {
+    document.documentElement.dataset.theme = settings.theme;
+  }, [settings.theme]);
+
+  useEffect(() => {
     void sendMessage({ type: "settings:get" }).then((response) => {
       if (response.ok && "settings" in response) {
         settingsRef.current = response.settings;
@@ -23,6 +27,20 @@ function Options(): React.ReactElement {
     }).catch((failure: unknown) => {
       setError(failure instanceof Error ? failure.message : "Settings failed to load.");
     });
+  }, []);
+
+  useEffect(() => {
+    const syncSettings = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+      if (areaName !== "local" || !changes["markdrive.settings"]?.newValue) return;
+      void sendMessage({ type: "settings:get" }).then((response) => {
+        if (response.ok && "settings" in response) {
+          settingsRef.current = response.settings;
+          setSettings(response.settings);
+        }
+      });
+    };
+    chrome.storage.onChanged.addListener(syncSettings);
+    return () => chrome.storage.onChanged.removeListener(syncSettings);
   }, []);
 
   async function update(update: Partial<MarkDriveSettings>): Promise<void> {

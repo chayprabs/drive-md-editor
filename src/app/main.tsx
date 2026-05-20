@@ -28,14 +28,20 @@ import { EmptyState } from "./empty-state";
 import { FindReplaceBar, type FindReplaceState } from "./find-replace-bar";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./markdown-editor";
 import { Onboarding } from "./onboarding";
-import { PreviewPane } from "./preview-pane";
+import { PreviewPane, type PreviewPaneHandle } from "./preview-pane";
 import { Sidebar } from "./sidebar";
 import { Toasts, useToasts } from "./toasts";
 import { ConflictModal } from "./conflict-modal";
 import { sendMessage } from "../shared/messages";
 import { markdownWithoutFrontmatter, readFrontmatter, writeFrontmatter } from "../shared/frontmatter";
 import { extractOutline, readingTimeMinutes, renderMarkdown, type CodeHighlighter } from "../shared/markdown";
-import { loadOfflineQueue, markQueuedSaveAttempt, queueOfflineSave, removeQueuedSave } from "../shared/offline-queue";
+import {
+  loadOfflineQueue,
+  markQueuedSaveAttempt,
+  maxOfflineRetryAttempts,
+  queueOfflineSave,
+  removeQueuedSave
+} from "../shared/offline-queue";
 import { loadRecents, rememberDocument, rememberDriveFile } from "../shared/recents";
 import { defaultSettings, saveSettings } from "../shared/settings";
 import { summarizeSearch } from "../shared/search";
@@ -90,13 +96,81 @@ function App(): React.ReactElement {
   const [pdfPrintRequest, setPdfPrintRequest] = useState(0);
   const { toasts, pushToast, dismissToast } = useToasts();
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
+  const previewRef = useRef<PreviewPaneHandle | null>(null);
   const overflowRef = useRef<HTMLDivElement | null>(null);
   const dirtyRef = useRef(false);
   const documentRef = useRef(document);
   const retryTimerRef = useRef<number | null>(null);
   const printRequestCounterRef = useRef(0);
   const pendingPrintRequestRef = useRef<number | null>(null);
+  const printRestoreTimerRef = useRef<number | null>(null);
+  const viewModeBeforePrintRef = useRef<ViewMode>("split");
+  const driveIssueRetryRef = useRef<() => void>(() => undefined);
+  const openFileRef = useRef<(fileId: string) => Promise<void>>(async () => undefined);
+  const saveCurrentRef = useRef<(source?: "manual" | "autosave" | "vim", target?: OpenDocument) => Promise<void>>(async () => undefined);
   documentRef.current = document;
+
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
+
+  const handleDriveFailure = useCallback((
+    status: number | undefined,
+    message: string,
+    retryAfterMs?: number,
+    retryAction?: () => void
+  ) => {
+    driveIssueRetryRef.current = retryAction ?? (() => void saveCurrentRef.current("manual"));
+    if (status === 401) {
+      setDriveIssue({ kind: "auth", message });
+      return;
+    }
+    if (status === 403) {
+      setDriveIssue({ kind: "permission", message });
+      return;
+    }
+    if (status === 404) {
+      setDriveIssue({ kind: "deleted", message });
+      return;
+    }
+    if (status === 429) {
+      const delay = retryAfterMs ?? 4000;
+      setDriveIssue({ kind: "rate-limit", message, retryAfterMs: delay });
+      clearRetryTimer();
+      driveIssueRetryRef.current = retryAction ?? (() => void saveCurrentRef.current("manual"));
+      retryTimerRef.current = retryAction
+        ? window.setTimeout(() => retryAction(), delay)
+        : window.setTimeout(() => void saveCurrent("manual"), delay);
+    }
+  }, [clearRetryTimer]);
+
+  const showDriveIssue = useCallback((
+    status: number | undefined,
+    message: string,
+    retryAfterMs?: number,
+    retryAction?: () => void
+  ) => {
+    handleDriveFailure(status, message, retryAfterMs, retryAction);
+  }, [handleDriveFailure]);
+
+  const schedulePrintViewRestore = useCallback(() => {
+    if (printRestoreTimerRef.current) window.clearTimeout(printRestoreTimerRef.current);
+    let restored = false;
+    const restore = () => {
+      if (restored) return;
+      restored = true;
+      if (printRestoreTimerRef.current) {
+        window.clearTimeout(printRestoreTimerRef.current);
+        printRestoreTimerRef.current = null;
+      }
+      setViewMode(viewModeBeforePrintRef.current);
+    };
+    window.addEventListener("afterprint", restore, { once: true });
+    printRestoreTimerRef.current = window.setTimeout(restore, 30_000);
+  }, []);
 
   const outline = useMemo(() => extractOutline(document.markdown), [document.markdown]);
   const frontmatter = useMemo(() => readFrontmatter(document.markdown), [document.markdown]);
@@ -110,6 +184,7 @@ function App(): React.ReactElement {
     };
   }, [document.markdown]);
   const findSummary = useMemo(() => summarizeSearch(document.markdown, findState), [document.markdown, findState]);
+  const [findMatchIndex, setFindMatchIndex] = useState(0);
   const safelySetRecents = useCallback(async (load: () => Promise<RecentFile[]>) => {
     try {
       setRecents(await load());
@@ -151,6 +226,17 @@ function App(): React.ReactElement {
   }, [pushToast, safelySetRecents]);
 
   useEffect(() => {
+    const syncSettings = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+      if (areaName !== "local" || !changes["markdrive.settings"]?.newValue) return;
+      void sendMessage({ type: "settings:get" }).then((response) => {
+        if (response.ok && "settings" in response) setSettings(response.settings);
+      });
+    };
+    chrome.storage.onChanged.addListener(syncSettings);
+    return () => chrome.storage.onChanged.removeListener(syncSettings);
+  }, []);
+
+  useEffect(() => {
     documentElement().dataset.theme = settings.theme;
   }, [settings.theme]);
 
@@ -181,6 +267,17 @@ function App(): React.ReactElement {
   }, []);
 
   useEffect(() => {
+    if (!pendingPrintRequestRef.current) return;
+    const timer = window.setTimeout(() => {
+      if (!pendingPrintRequestRef.current) return;
+      pendingPrintRequestRef.current = null;
+      schedulePrintViewRestore();
+      pushToast({ tone: "warning", title: "Print export timed out", detail: "Preview layout was restored." });
+    }, 15_000);
+    return () => window.clearTimeout(timer);
+  }, [pdfPrintRequest, pushToast, schedulePrintViewRestore]);
+
+  useEffect(() => {
     if (settings.autosaveInterval === 0 || !dirtyRef.current) return;
     const timer = window.setTimeout(() => {
       if (dirtyRef.current) void saveCurrent("autosave", documentRef.current);
@@ -197,25 +294,14 @@ function App(): React.ReactElement {
     return () => window.removeEventListener("online", retry);
   }, []);
 
-  const showDriveIssue = useCallback((status: number | undefined, message: string, retryAfterMs?: number) => {
-    if (status === 401) {
-      setDriveIssue({ kind: "auth", message });
-      return;
-    }
-    if (status === 403) {
-      setDriveIssue({ kind: "permission", message });
-      return;
-    }
-    if (status === 404) {
-      setDriveIssue({ kind: "deleted", message });
-      return;
-    }
-    if (status === 429) {
-      setDriveIssue({ kind: "rate-limit", message, retryAfterMs: retryAfterMs ?? 4000 });
-    }
+  const confirmLeaveDocument = useCallback((): boolean => {
+    if (!dirtyRef.current) return true;
+    return window.confirm("You have unsaved changes. Discard them and continue?");
   }, []);
 
   const openFile = useCallback(async (fileId: string) => {
+    if (documentRef.current.fileId === fileId) return;
+    if (!confirmLeaveDocument()) return;
     let response: Awaited<ReturnType<typeof sendMessage>>;
     try {
       response = await sendMessage({ type: "drive:get-file", fileId });
@@ -226,7 +312,7 @@ function App(): React.ReactElement {
     if (!response.ok) {
       const detail = describeDriveError(response.status, response.message);
       pushToast({ tone: "danger", title: "Could not open file", detail });
-      showDriveIssue(response.status, detail, response.retryAfterMs);
+      showDriveIssue(response.status, detail, response.retryAfterMs, () => void openFileRef.current(fileId));
       return;
     }
     if (!("file" in response)) {
@@ -246,7 +332,7 @@ function App(): React.ReactElement {
     setShowEmptyState(false);
     dirtyRef.current = false;
     setSaveState("idle");
-  }, [pushToast, safelySetRecents, showDriveIssue]);
+  }, [confirmLeaveDocument, handleDriveFailure, pushToast, safelySetRecents]);
 
   const saveCurrent = useCallback(async (
     source: "manual" | "autosave" | "vim" = "manual",
@@ -344,7 +430,7 @@ function App(): React.ReactElement {
       pushToast({ tone: "danger", title: "Save failed", detail });
       handleDriveFailure(response.status, detail, response.retryAfterMs);
     }
-  }, [document, pushToast, safelyQueueOfflineSave, safelySetRecents]);
+  }, [handleDriveFailure, pushToast, safelyQueueOfflineSave, safelySetRecents]);
 
   const retryOfflineQueue = useCallback(async () => {
     if (!navigator.onLine) return;
@@ -357,7 +443,17 @@ function App(): React.ReactElement {
     }
     if (queue.length === 0) return;
 
-    for (const item of queue) {
+    const retriable = queue.filter((item) => item.attempts < maxOfflineRetryAttempts);
+    if (retriable.length === 0) {
+      pushToast({
+        tone: "danger",
+        title: "Queued saves need attention",
+        detail: `${queue.length} local save${queue.length === 1 ? "" : "s"} could not sync after ${maxOfflineRetryAttempts} attempts.`
+      });
+      return;
+    }
+
+    for (const item of retriable) {
       try {
         await markQueuedSaveAttempt(item.id);
       } catch (failure) {
@@ -429,27 +525,14 @@ function App(): React.ReactElement {
         break;
       }
     }
-  }, [pushToast, safelySetRecents]);
+  }, [handleDriveFailure, pushToast, safelySetRecents]);
 
-  const handleDriveFailure = useCallback((status: number | undefined, message: string, retryAfterMs?: number) => {
-    if (status === 401) {
-      setDriveIssue({ kind: "auth", message });
-      return;
-    }
-    if (status === 403) {
-      setDriveIssue({ kind: "permission", message });
-      return;
-    }
-    if (status === 404) {
-      setDriveIssue({ kind: "deleted", message });
-      return;
-    }
-    if (status === 429) {
-      const delay = retryAfterMs ?? 4000;
-      setDriveIssue({ kind: "rate-limit", message, retryAfterMs: delay });
-      if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = window.setTimeout(() => void saveCurrent("manual"), delay);
-    }
+  useEffect(() => {
+    openFileRef.current = openFile;
+  }, [openFile]);
+
+  useEffect(() => {
+    saveCurrentRef.current = saveCurrent;
   }, [saveCurrent]);
 
   const changeMarkdown = useCallback((markdown: string) => {
@@ -481,11 +564,13 @@ function App(): React.ReactElement {
   const openFindReplace = useCallback(() => {
     if (viewMode === "preview") setViewMode("split");
     setFindOpen(true);
+    setFindMatchIndex(0);
   }, [viewMode]);
 
   const findInEditor = useCallback((direction: "next" | "previous") => {
-    const matches = editorRef.current?.find(findState, direction) ?? 0;
-    if (findState.query && matches === 0) {
+    const result = editorRef.current?.find(findState, direction) ?? { total: 0, index: 0 };
+    setFindMatchIndex(result.index);
+    if (findState.query && result.total === 0) {
       pushToast({ tone: findSummary.invalid ? "danger" : "warning", title: findSummary.invalid ? "Invalid search pattern" : "No matches" });
     }
   }, [findState, findSummary.invalid, pushToast]);
@@ -507,6 +592,7 @@ function App(): React.ReactElement {
   }, [findState, pushToast]);
 
   const newDocument = useCallback(() => {
+    if (!confirmLeaveDocument()) return;
     setDocument({
       fileId: null,
       name: "Untitled.md",
@@ -518,7 +604,7 @@ function App(): React.ReactElement {
     dirtyRef.current = false;
     setSaveState("idle");
     setShowEmptyState(false);
-  }, [browserFolderId]);
+  }, [browserFolderId, confirmLeaveDocument]);
 
   const importPaste = useCallback((html: string) => {
     try {
@@ -559,21 +645,24 @@ function App(): React.ReactElement {
   const exportHtml = useCallback(() => {
     void (async () => {
       try {
+        const highlightTheme = settings.theme === "light" || settings.theme === "solarized" ? "github" : "github-dark";
         const [{ default: hljs }, { default: highlightCss }] = await Promise.all([
           import("./highlight-languages"),
-          import("highlight.js/styles/github-dark.css?inline")
+          import(`highlight.js/styles/${highlightTheme}.css?inline`)
         ]);
-        const html = buildSelfContainedHtml(document.name, document.markdown, hljs, highlightCss);
+        const html = buildSelfContainedHtml(document.name, document.markdown, hljs, highlightCss, settings.theme);
         downloadBlob(`${document.name.replace(/\.md$/i, "")}.html`, "text/html", html);
+        pushToast({ tone: "success", title: "Exported HTML", detail: `${document.name.replace(/\.md$/i, "")}.html` });
       } catch (error) {
         pushToast({ tone: "danger", title: "HTML export failed", detail: error instanceof Error ? error.message : "Unable to build the export." });
       }
     })();
-  }, [document.markdown, document.name, pushToast]);
+  }, [document.markdown, document.name, pushToast, settings.theme]);
 
   const exportMarkdown = useCallback(() => {
     try {
       downloadBlob(document.name, "text/markdown", document.markdown);
+      pushToast({ tone: "success", title: "Exported Markdown", detail: document.name });
     } catch (failure) {
       pushToast({ tone: "danger", title: "Markdown export failed", detail: describeUnknownError(failure) });
     }
@@ -581,6 +670,7 @@ function App(): React.ReactElement {
 
   const exportPdf = useCallback(() => {
     try {
+      viewModeBeforePrintRef.current = viewMode;
       const requestId = printRequestCounterRef.current + 1;
       printRequestCounterRef.current = requestId;
       pendingPrintRequestRef.current = requestId;
@@ -590,26 +680,22 @@ function App(): React.ReactElement {
       pendingPrintRequestRef.current = null;
       pushToast({ tone: "danger", title: "PDF export failed", detail: describeUnknownError(failure) });
     }
-  }, [pushToast]);
+  }, [pushToast, viewMode]);
 
   const handlePdfPrintReady = useCallback((requestId: number) => {
     if (pendingPrintRequestRef.current !== requestId) return;
     pendingPrintRequestRef.current = null;
     window.requestAnimationFrame(() => {
       try {
+        schedulePrintViewRestore();
         window.print();
+        pushToast({ tone: "success", title: "Print dialog opened", detail: "Choose Save as PDF in the print dialog." });
       } catch (failure) {
+        setViewMode(viewModeBeforePrintRef.current);
         pushToast({ tone: "danger", title: "PDF export failed", detail: describeUnknownError(failure) });
       }
     });
-  }, [pushToast]);
-
-  const clearRetryTimer = useCallback(() => {
-    if (retryTimerRef.current) {
-      window.clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
-  }, []);
+  }, [pushToast, schedulePrintViewRestore]);
 
   const toggleFullscreen = useCallback(() => {
     void (async () => {
@@ -636,6 +722,10 @@ function App(): React.ReactElement {
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
+      if (event.key === "Escape" && findOpen) {
+        setFindOpen(false);
+        return;
+      }
       if ((event.target as Element | null)?.closest(".cm-editor")) return;
       const mod = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
@@ -661,7 +751,7 @@ function App(): React.ReactElement {
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [openFindReplace, saveCurrent, toggleFullscreen]);
+  }, [findOpen, openFindReplace, saveCurrent, toggleFullscreen]);
 
   return (
     <main className="app-shell">
@@ -671,25 +761,25 @@ function App(): React.ReactElement {
           <span>MarkDrive</span>
         </div>
         <div className="toolbar-group">
-          <button title="New file" onClick={newDocument}><FilePlus2 size={16} /></button>
-          <button title="Save" onClick={() => void saveCurrent("manual")}><Save size={16} /></button>
-          <button title="Bold" onClick={() => command("bold")}><Bold size={16} /></button>
-          <button title="Italic" onClick={() => command("italic")}><Italic size={16} /></button>
-          <button title="Link" onClick={() => command("link")}><Link size={16} /></button>
-          <button title="Find and replace" aria-pressed={findOpen} onClick={openFindReplace}><Search size={16} /></button>
+          <button title="New file" aria-label="New file" onClick={newDocument}><FilePlus2 size={16} /></button>
+          <button title="Save" aria-label="Save" onClick={() => void saveCurrent("manual")}><Save size={16} /></button>
+          <button title="Bold" aria-label="Bold" onClick={() => command("bold")}><Bold size={16} /></button>
+          <button title="Italic" aria-label="Italic" onClick={() => command("italic")}><Italic size={16} /></button>
+          <button title="Link" aria-label="Link" onClick={() => command("link")}><Link size={16} /></button>
+          <button title="Find and replace" aria-label="Find and replace" aria-pressed={findOpen} onClick={openFindReplace}><Search size={16} /></button>
         </div>
         <div className="toolbar-group">
-          <button title="Split view" aria-pressed={viewMode === "split"} onClick={() => setViewMode("split")}><Columns2 size={16} /></button>
-          <button title="Editor only" aria-pressed={viewMode === "editor"} onClick={() => setViewMode("editor")}><Braces size={16} /></button>
-          <button title="Preview only" aria-pressed={viewMode === "preview"} onClick={() => setViewMode("preview")}><Eye size={16} /></button>
-          <button title="Soft wrap" aria-pressed={settings.softWrap} onClick={() => void updateSettings({ softWrap: !settings.softWrap })}><WrapText size={16} /></button>
-          <button title={`Theme: ${settings.theme}`} onClick={() => void updateSettings({ theme: nextTheme(settings.theme) })}>{settings.theme === "light" || settings.theme === "solarized" ? <Sun size={16} /> : <Moon size={16} />}</button>
+          <button title="Split view" aria-label="Split view" aria-pressed={viewMode === "split"} onClick={() => setViewMode("split")}><Columns2 size={16} /></button>
+          <button title="Editor only" aria-label="Editor only" aria-pressed={viewMode === "editor"} onClick={() => setViewMode("editor")}><Braces size={16} /></button>
+          <button title="Preview only" aria-label="Preview only" aria-pressed={viewMode === "preview"} onClick={() => setViewMode("preview")}><Eye size={16} /></button>
+          <button title="Soft wrap" aria-label="Soft wrap" aria-pressed={settings.softWrap} onClick={() => void updateSettings({ softWrap: !settings.softWrap })}><WrapText size={16} /></button>
+          <button title={`Theme: ${settings.theme}`} aria-label={`Theme: ${settings.theme}`} onClick={() => void updateSettings({ theme: nextTheme(settings.theme) })}>{settings.theme === "light" || settings.theme === "solarized" ? <Sun size={16} /> : <Moon size={16} />}</button>
         </div>
         <div className="toolbar-group overflow">
-          <button title="Export Markdown" onClick={exportMarkdown}><Download size={16} /></button>
-          <button title="Export HTML" onClick={exportHtml}><Upload size={16} /></button>
-          <button title="Export PDF" onClick={exportPdf}><FileDown size={16} /></button>
-          <button title="Options" onClick={openOptionsPage}><Settings size={16} /></button>
+          <button title="Export Markdown" aria-label="Export Markdown" onClick={exportMarkdown}><Download size={16} /></button>
+          <button title="Export HTML" aria-label="Export HTML" onClick={exportHtml}><Upload size={16} /></button>
+          <button title="Export PDF" aria-label="Export PDF" onClick={exportPdf}><FileDown size={16} /></button>
+          <button title="Options" aria-label="Options" onClick={openOptionsPage}><Settings size={16} /></button>
         </div>
         <div className="toolbar-more" ref={overflowRef}>
           <button
@@ -715,8 +805,11 @@ function App(): React.ReactElement {
         {findOpen ? (
           <FindReplaceBar
             state={findState}
-            summary={findSummary}
-            onState={setFindState}
+            summary={{ ...findSummary, index: findMatchIndex }}
+            onState={(next) => {
+              setFindState(next);
+              setFindMatchIndex(0);
+            }}
             onFind={findInEditor}
             onReplaceCurrent={replaceCurrent}
             onReplaceAll={replaceAllInEditor}
@@ -737,6 +830,7 @@ function App(): React.ReactElement {
           frontmatter={frontmatter}
           query={query}
           folderId={browserFolderId}
+          activeFileId={document.fileId}
           onQuery={setQuery}
           onFrontmatter={updateFrontmatter}
           onOpenFile={(fileId) => void openFile(fileId)}
@@ -752,7 +846,13 @@ function App(): React.ReactElement {
             setBrowserFolderId(folderId);
             void updateSettings({ lastFolderId: folderId });
           }}
-          onJump={(line) => editorRef.current?.goToLine(line)}
+          onDriveFailure={(status, message, retryAfterMs) => handleDriveFailure(status, message, retryAfterMs)}
+          onJump={(line) => {
+            const heading = outline.find((item) => item.line === line);
+            if (viewMode === "preview") setViewMode("split");
+            editorRef.current?.goToLine(line);
+            if (heading) previewRef.current?.scrollToHeading(heading.id);
+          }}
         />
         {showEmptyState ? (
           <EmptyState
@@ -772,6 +872,7 @@ function App(): React.ReactElement {
                 markdown={document.markdown}
                 vimMode={settings.vimMode}
                 softWrap={settings.softWrap}
+                searchHighlight={findOpen && findState.query ? findState : null}
                 onChange={changeMarkdown}
                 onSave={() => void saveCurrent("manual")}
                 onVimSave={() => void saveCurrent("vim")}
@@ -785,6 +886,7 @@ function App(): React.ReactElement {
             )}
             {viewMode !== "editor" && (
               <PreviewPane
+                ref={previewRef}
                 markdown={document.markdown}
                 theme={settings.theme}
                 printRequestId={pdfPrintRequest}
@@ -803,7 +905,7 @@ function App(): React.ReactElement {
         <span>{stats.chars} chars</span>
         <span>{stats.reading} min read</span>
         <span>Ln {cursor.line}, Col {cursor.column}</span>
-        <span className={`save-state ${saveState}`}>{saveState}</span>
+        <span className={`save-state ${saveState}`} aria-live="polite">{saveState}</span>
       </footer>
       {conflict && (
         <ConflictModal
@@ -846,12 +948,12 @@ function App(): React.ReactElement {
           onRetry={() => {
             clearRetryTimer();
             setDriveIssue(null);
-            void saveCurrent("manual");
+            void driveIssueRetryRef.current();
           }}
           onReauth={() => {
             setDriveIssue(null);
             void sendMessage({ type: "auth:get-token", interactive: true }).then((response) => {
-              if (response.ok) void saveCurrent("manual");
+              if (response.ok) void driveIssueRetryRef.current();
               else pushToast({ tone: "danger", title: "Authentication failed", detail: response.message });
             }).catch((failure: unknown) => {
               pushToast({ tone: "danger", title: "Authentication failed", detail: describeUnknownError(failure) });
@@ -917,10 +1019,17 @@ function fallbackDownloadName(name: string): string {
   return /\.html$/i.test(name) ? "MarkDrive-export.html" : "MarkDrive-export.md";
 }
 
-function buildSelfContainedHtml(name: string, markdown: string, codeHighlighter?: CodeHighlighter, highlightCss = ""): string {
+function buildSelfContainedHtml(
+  name: string,
+  markdown: string,
+  codeHighlighter?: CodeHighlighter,
+  highlightCss = "",
+  theme: ThemeName = "light"
+): string {
   const frontmatter = readFrontmatter(markdown);
   const outline = extractOutline(markdown);
   const title = frontmatter.title || name.replace(/\.md$/i, "");
+  const pageTheme = exportPageTheme(theme);
   const toc = outline.length > 0
     ? `<nav class="toc"><h2>Contents</h2>${outline.map((item) => `<a style="margin-left:${(item.level - 1) * 12}px" href="#${escapeHtml(item.id)}">${escapeHtml(item.text)}</a>`).join("")}</nav>`
     : "";
@@ -931,12 +1040,13 @@ function buildSelfContainedHtml(name: string, markdown: string, codeHighlighter?
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>
-body{margin:0;padding:48px;max-width:860px;font:18px/1.7 Lora,Georgia,serif;color:#111827;background:#fff}
+body{margin:0;padding:48px;max-width:860px;font:18px/1.7 Lora,Georgia,serif;${pageTheme.body}}
 h1,h2,h3,h4,h5,h6{font-family:Geist,Arial,sans-serif;line-height:1.2}
-a{color:#0d9488}.toc{padding:16px 0;border-bottom:1px solid #d1d5db}.toc a{display:block}
-pre{overflow:auto;padding:14px;border:1px solid #d1d5db;border-radius:8px;background:#111827;color:#f9fafb}
+a{color:${pageTheme.accent}}.toc{padding:16px 0;border-bottom:1px solid ${pageTheme.border}}.toc a{display:block}
+pre{overflow:auto;padding:14px;border:1px solid ${pageTheme.border};border-radius:8px;${pageTheme.pre}}
 ${highlightCss}
-.frontmatter{margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #d1d5db;color:#4b5563}
+.frontmatter{margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid ${pageTheme.border};color:${pageTheme.muted}}
+.callout{margin:16px 0;padding:12px 16px;border-left:4px solid ${pageTheme.accent};background:${pageTheme.callout}}
 @page{margin:0.75in;@bottom-center{content:counter(page)}}
 </style>
 </head>
@@ -946,6 +1056,27 @@ ${toc}
 <article>${renderMarkdown(markdown, codeHighlighter)}</article>
 </body>
 </html>`;
+}
+
+function exportPageTheme(theme: ThemeName): { body: string; accent: string; border: string; muted: string; pre: string; callout: string } {
+  if (theme === "light" || theme === "solarized") {
+    return {
+      body: "color:#111827;background:#fff",
+      accent: "#0d9488",
+      border: "#d1d5db",
+      muted: "#4b5563",
+      pre: "background:#111827;color:#f9fafb",
+      callout: "#f0fdfa"
+    };
+  }
+  return {
+    body: "color:#e6edf3;background:#0d1117",
+    accent: "#2dd4bf",
+    border: "#30363d",
+    muted: "#8b949e",
+    pre: "background:#161b22;color:#e6edf3",
+    callout: "#132f2c"
+  };
 }
 
 function escapeHtml(value: string): string {

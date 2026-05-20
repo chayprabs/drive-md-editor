@@ -40,8 +40,11 @@ expect(app.includes("title: \"Authentication failed\", detail: describeUnknownEr
 expect(app.includes("title: \"Queued save retry failed\""), "Queued save runtime retry failures must show user feedback.");
 expect(app.includes("title: \"Offline queue unavailable\""), "Offline queue load failures must show user feedback.");
 expect(app.includes("title: \"Queued save synced but not cleared\""), "Offline queue removal failures must show user feedback.");
-expect(app.includes("showDriveIssue(response.status, detail, response.retryAfterMs)"), "Open failures must use the same Drive issue modal path as save failures.");
-expect(app.includes("const showDriveIssue = useCallback"), "Drive issue modal routing must be reusable across open and save failures.");
+expect(app.includes("handleDriveFailure(response.status, detail, response.retryAfterMs"), "Open failures must use the same Drive issue modal path as save failures.");
+expect(app.includes("const handleDriveFailure = useCallback"), "Drive issue modal routing must be reusable across open and save failures.");
+expect(app.includes("driveIssueRetryRef"), "Drive issue retries must preserve the action that failed.");
+expect(modal.includes("remainingMs"), "Rate-limit modal must show a live retry countdown.");
+expect(modal.includes("disabled={issue.kind === \"rate-limit\" && remainingMs > 0}"), "Rate-limit retry must stay disabled until the countdown completes.");
 expect(app.includes("pushToast({ tone: \"danger\", title: \"Image upload failed\""), "Image upload failures must show user feedback.");
 expect(app.includes("title: \"Preview rendering failed\""), "Preview hydration failures must show user feedback.");
 expect(preview.includes("onHydrationError(failure: unknown): void"), "Preview must expose a hydration failure callback.");
@@ -106,7 +109,8 @@ expect(background.includes("if (record.type === \"drive:rename-file\") return no
 expect(background.includes("void initializeExtension(reason)"), "Install-time background setup must be guarded.");
 expect(background.includes("void runBackgroundAction(() => openEditor(null, null))"), "Toolbar and command open actions must be guarded.");
 expect(background.includes("void runBackgroundAction(() => openFromContext"), "Context menu open actions must be guarded.");
-expect(background.includes("function reportBackgroundFailure"), "Background action failures must be reported.");
+expect(background.includes("async function flushOfflineQueue"), "Background worker must flush queued offline saves.");
+expect(background.includes("error.status === 409"), "Background offline flush must stop on save conflicts instead of retrying blindly.");
 expect(background.includes("chrome.action.setBadgeText({ text: \"!\" })"), "Background action failures must show an extension badge.");
 expect(background.includes("chrome.action.setTitle({ title: `MarkDrive error: ${message}` })"), "Background action failures must expose the error in the extension title.");
 expect(background.includes("function clearBackgroundFailure"), "Successful editor opens must clear background failure feedback.");
@@ -126,6 +130,10 @@ expect(queue.includes("chrome.storage.local.set({ [storageKey]: queue })"), "Off
 expect(queue.includes("attempts: existing?.attempts ?? 0"), "Offline queue must retain retry attempt counts.");
 expect(queue.includes("markQueuedSaveAttempt"), "Offline queue must record retry attempts.");
 expect(queue.includes("removeQueuedSave"), "Offline queue must remove synced saves.");
+expect(background.includes("chrome.alarms.onAlarm.addListener"), "Background must retry offline saves on alarms.");
+expect(background.includes("flushOfflineQueue"), "Background must flush queued offline saves.");
+expect(background.includes("item.attempts >= maxOfflineRetryAttempts"), "Background offline flush must stop retrying exhausted saves.");
+expect(app.includes("maxOfflineRetryAttempts"), "App offline retry must honor the shared retry limit.");
 expect(queue.includes("const normalizedDocument = normalizeOpenDocument(document);"), "Offline queue writes must normalize documents before persistence.");
 expect(queue.includes("const id = typeof item.id === \"string\" ? item.id.trim() : \"\";"), "Offline queue must trim queued save ids.");
 expect(queue.includes("Number.isFinite(Date.parse(item.queuedAt))"), "Offline queue must reject invalid queued timestamps.");
