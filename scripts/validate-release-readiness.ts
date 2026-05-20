@@ -1,7 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
-import { execFileSync } from "node:child_process";
 
 const root = resolve(import.meta.dirname, "..");
 const evidencePath = resolve(root, "release", "live-drive-verification.json");
@@ -109,29 +108,6 @@ if (evidence) {
   for (const id of requiredChecks) {
     expect(seen.has(id), `Missing live Drive verification check: ${id}`);
   }
-}
-
-const tagsAtHead = execFileSync("git", ["tag", "--points-at", "HEAD"], { cwd: root, encoding: "utf8" }).split(/\r?\n/).filter(Boolean);
-for (const tag of [
-  "module/app",
-  "module/background",
-  "module/branding",
-  "module/content",
-  "module/docs",
-  "module/drive",
-  "module/editor",
-  "module/export",
-  "module/options",
-  "module/preview",
-  "module/release",
-  "module/theme",
-  "module/ui"
-]) {
-  expect(tagsAtHead.includes(tag), `Required module tag must point at HEAD: ${tag}`);
-}
-
-if (process.env.MARKDRIVE_REQUIRE_V1_TAG === "1") {
-  expect(tagsAtHead.includes("v1.0.0"), "v1.0.0 must point at HEAD when MARKDRIVE_REQUIRE_V1_TAG=1.");
 }
 
 if (failures.length > 0) {

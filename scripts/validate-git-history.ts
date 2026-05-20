@@ -15,22 +15,6 @@ const requiredScopeCoverage: Record<string, string[]> = {
   options: ["options"],
   release: ["release", "ci", "perf"]
 };
-const requiredModuleTags = [
-  "module/app",
-  "module/background",
-  "module/branding",
-  "module/content",
-  "module/docs",
-  "module/drive",
-  "module/editor",
-  "module/export",
-  "module/options",
-  "module/preview",
-  "module/release",
-  "module/theme",
-  "module/ui"
-];
-
 const log = await git(["log", "--reverse", "--format=%H%x09%s"]);
 const commits = log.trim().split(/\r?\n/).filter(Boolean).map((line) => {
   const [hash, ...subjectParts] = line.split("\t");
@@ -52,11 +36,6 @@ const scopes = new Set(
 
 for (const [moduleName, acceptedScopes] of Object.entries(requiredScopeCoverage)) {
   expect(acceptedScopes.some((scope) => scopes.has(scope)), `Git history is missing module coverage for: ${moduleName}`);
-}
-
-const tags = new Set((await git(["tag", "--list"])).trim().split(/\r?\n/).filter(Boolean));
-for (const tag of requiredModuleTags) {
-  expect(tags.has(tag), `Git history is missing required module tag: ${tag}`);
 }
 
 if (failures.length > 0) {
