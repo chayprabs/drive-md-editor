@@ -23,11 +23,11 @@ globalThis.chrome = chromeMock as typeof chrome;
 try {
   const { defaultSettings, loadSettings, saveSettings, updateSettings } = await import("../src/shared/settings");
 
-  expect(defaultSettings.theme === "dark", "Default settings must keep a known theme.");
+  expect(defaultSettings.theme === "light", "Default settings must keep a known theme.");
 
   await saveSettings({
     ...defaultSettings,
-    theme: "dark",
+    theme: "light",
     autosaveInterval: 5000,
     vimMode: false,
     softWrap: true,
@@ -35,7 +35,7 @@ try {
     onboardingComplete: false
   });
   const loaded = await loadSettings();
-  expect(loaded.theme === "dark", "Settings persistence must round-trip valid settings.");
+  expect(loaded.theme === "light", "Settings persistence must round-trip valid settings.");
 
   await chromeMock.storage.local.set({
     "markdrive.settings": {

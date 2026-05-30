@@ -118,7 +118,7 @@ MarkDrive uses **Chrome Extension OAuth** only. It **does not use a client secre
 1. Open **Google Cloud Console** and create or select a project.
 2. **Enable Google Drive API v3**.
 3. Configure the **OAuth consent screen** and add the Drive scopes MarkDrive uses (`drive.file`, `drive.metadata.readonly`).
-4. Build once with a placeholder id, load `dist` on **chrome://extensions**, and copy the 32-character extension **ID**.
+4. Build once with a development OAuth client id, load `dist` on **chrome://extensions**, and copy the 32-character extension **ID**.
 5. Create an OAuth client with application type **Chrome Extension** and that extension ID.
 6. Rebuild with your production client id:
 
@@ -210,11 +210,7 @@ Stack: TypeScript, React 19, Vite, `@crxjs/vite-plugin`, CodeMirror 6, markdown-
 
 MarkDrive sends file content and images to **Google Drive APIs** only when you open, save, create, upload, rename, or trash. Settings, recent files, and offline drafts stay in **local Chrome extension storage**. No ads, no analytics on document content.
 
-See [PRIVACY.md](./PRIVACY.md) (also available at `/privacy.html` in development builds). Terms: [TERMS.md](./TERMS.md) and `/terms.html`.
-
-## License
-
-MarkDrive is released under the [MIT License](./LICENSE).
+See [PRIVACY.md](./PRIVACY.md).
 
 ---
 
@@ -276,7 +272,7 @@ Confirm Drive API is enabled, consent screen test users include your account (if
 Yes, if your admin allows the OAuth app and Drive API access. Internal apps may use an Internal consent screen in Cloud Console.
 
 **Why doesn’t save work with the default dev build?**  
-An unconfigured placeholder client id is only for UI inspection. Follow [OAuth setup](#oauth-setup) for real Drive read/write.
+An unconfigured development client id is only for UI inspection. Follow [OAuth setup](#oauth-setup) for real Drive read/write.
 
 ---
 

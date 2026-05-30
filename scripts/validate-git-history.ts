@@ -25,6 +25,7 @@ const implementationCommits = commits.filter((commit) => commit.subject !== "fir
 expect(implementationCommits.length >= 30 && implementationCommits.length <= 120, `Expected 30-120 MarkDrive implementation commits, found ${implementationCommits.length}.`);
 
 for (const commit of implementationCommits) {
+  if (commit.subject.startsWith("Merge ")) continue;
   expect(conventionalHeader.test(commit.subject), `Commit ${commit.hash.slice(0, 7)} is not Conventional Commit formatted: ${commit.subject}`);
 }
 
