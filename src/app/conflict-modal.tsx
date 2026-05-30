@@ -14,6 +14,7 @@ export function ConflictModal({ conflict, onKeepMine, onKeepDrive, onSaveCopy }:
     <div className="modal-backdrop" role="presentation">
       <section className="modal conflict-modal" role="dialog" aria-modal="true" aria-labelledby="conflict-title">
         <h2 id="conflict-title">Drive changed this file</h2>
+        <p className="conflict-file-name"><strong>{conflict.local.name}</strong></p>
         <p>
           MarkDrive found a newer Drive version modified at {new Date(conflict.drive.modifiedTime).toLocaleString()}.
         </p>

@@ -20,7 +20,11 @@ expect(app.includes("setDriveIssue({ kind: \"permission\", message })"), "403 re
 expect(app.includes("setDriveIssue({ kind: \"deleted\", message })"), "404 responses must show the deleted-file modal.");
 expect(app.includes("setDriveIssue({ kind: \"rate-limit\", message, retryAfterMs: delay })"), "429 responses must show retry timing.");
 expect(app.includes("retryAfterMs ?? 4000"), "429 responses must use a bounded fallback backoff.");
-expect(app.includes("window.setTimeout(() => void saveCurrent(\"manual\"), delay)"), "429 responses must schedule a retry.");
+expect(
+  app.includes("window.setTimeout(() => void saveCurrent(\"manual\"), delay)")
+    || app.includes("window.setTimeout(() => void saveCurrentRef.current(\"manual\"), delay)"),
+  "429 responses must schedule a retry."
+);
 expect(app.includes("clearRetryTimer"), "Drive issue actions must clear pending retry timers.");
 expect(app.includes("queueOfflineSave(target)"), "Offline saves must be queued locally.");
 expect(app.includes("response.status === 0 || !navigator.onLine"), "Network save failures must be queued even if the browser still reports online.");

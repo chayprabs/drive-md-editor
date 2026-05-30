@@ -17,7 +17,11 @@ expect(preview.includes("const katex = await import(\"katex\")"), "KaTeX runtime
 expect(preview.includes("const mermaid = await import(\"mermaid\")"), "Mermaid runtime must be lazy-loaded.");
 expect(preview.includes("await import(\"highlight.js/styles/github-dark.css\")"), "Highlight CSS must be lazy-loaded.");
 expect(preview.includes("const hljs = await import(\"./highlight-languages\")"), "Highlight language registry must be lazy-loaded.");
-expect(preview.includes("await hydrateCode(host, onHydrationError, isCurrentHydration);"), "Highlight hydration must stay inside the debounced preview hydration path.");
+expect(
+  preview.includes("await hydrateCode(host, onHydrationError, isCurrentHydration);")
+    || preview.includes("await hydrateCode(host, theme, onHydrationError, isCurrentHydration);"),
+  "Highlight hydration must stay inside the debounced preview hydration path."
+);
 expect(preview.includes("if (mathNodes.length > 0)"), "KaTeX must load only when math nodes exist.");
 expect(preview.includes("if (diagramNodes.length > 0)"), "Mermaid must load only when diagram nodes exist.");
 expect(preview.includes("if (codeNodes.length === 0) return;"), "Highlight assets must load only when code blocks exist.");

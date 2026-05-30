@@ -32,6 +32,7 @@ import { PreviewPane, type PreviewPaneHandle } from "./preview-pane";
 import { Sidebar } from "./sidebar";
 import { Toasts, useToasts } from "./toasts";
 import { ConflictModal } from "./conflict-modal";
+import { SeoBar, SiteFooter, SiteTopbar } from "./site-chrome";
 import { sendMessage } from "../shared/messages";
 import { markdownWithoutFrontmatter, readFrontmatter, writeFrontmatter } from "../shared/frontmatter";
 import { extractOutline, readingTimeMinutes, renderMarkdown, type CodeHighlighter } from "../shared/markdown";
@@ -186,7 +187,7 @@ function App(): React.ReactElement {
       driveIssueRetryRef.current = retryAction ?? (() => void saveCurrentRef.current("manual"));
       retryTimerRef.current = retryAction
         ? window.setTimeout(() => retryAction(), delay)
-        : window.setTimeout(() => void saveCurrent("manual"), delay);
+        : window.setTimeout(() => void saveCurrentRef.current("manual"), delay);
     }
   }, [clearRetryTimer]);
 
@@ -595,8 +596,8 @@ function App(): React.ReactElement {
   }, []);
 
   const updateFrontmatter = useCallback((next: typeof frontmatter) => {
-    changeMarkdown(writeFrontmatter(document.markdown, next));
-  }, [changeMarkdown, document.markdown]);
+    changeMarkdown(writeFrontmatter(documentRef.current.markdown, next));
+  }, [changeMarkdown]);
 
   const updateSettings = useCallback(async (update: Partial<MarkDriveSettings>) => {
     const previous = settings;
@@ -815,10 +816,10 @@ function App(): React.ReactElement {
 
   return (
     <main className="app-shell">
+      <SiteTopbar />
+      <SeoBar />
       <header className="toolbar">
         <div className="brand">
-          <img src="/icon.svg" alt="" />
-          <span>MarkDrive</span>
           <span className="file-kind-badge">{fileKindLabel(fileKind)}</span>
         </div>
         <div className="toolbar-group">
@@ -895,7 +896,7 @@ function App(): React.ReactElement {
         ) : null}
       </div>
 
-      <section className="workspace">
+      <section className={`workspace${activeSidebar === "drive" ? " sidebar-mobile-open" : ""}`}>
         <aside className="rail">
           <button title="Outline" aria-pressed={activeSidebar === "outline"} onClick={() => setActiveSidebar("outline")}><PanelLeft size={16} /></button>
           <button title="Drive browser" aria-pressed={activeSidebar === "drive"} onClick={() => setActiveSidebar("drive")}><FolderOpen size={16} /></button>
@@ -991,6 +992,7 @@ function App(): React.ReactElement {
         <span>Ln {cursor.line}, Col {cursor.column}</span>
         <span className={`save-state ${saveState}`} aria-live="polite">{saveState}</span>
       </footer>
+      <SiteFooter />
       {conflict && (
         <ConflictModal
           conflict={conflict}

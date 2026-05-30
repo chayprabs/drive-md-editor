@@ -1301,6 +1301,25 @@ button:disabled {
     display: none;
   }
 
+  .workspace.sidebar-mobile-open .sidebar {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    max-width: none;
+    width: min(100%, 360px);
+    box-shadow: var(--shadow);
+  }
+
+  .workspace.sidebar-mobile-open::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: rgb(15 23 42 / 35%);
+  }
+
+
   .findbar {
     grid-template-columns: minmax(0, 1fr) repeat(5, 28px);
   }

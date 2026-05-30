@@ -45,7 +45,11 @@ for (const field of ["title", "date", "tags", "author", "draft"]) {
 expect(sidebar.includes("type=\"date\""), "Frontmatter date must use a date input.");
 expect(sidebar.includes("fields.tags.join(\", \")"), "Frontmatter tags must render as a comma-separated list.");
 expect(sidebar.includes("event.target.value.split(\",\").map((tag) => tag.trim()).filter(Boolean)"), "Frontmatter tags must parse comma-separated input.");
-expect(app.includes("changeMarkdown(writeFrontmatter(document.markdown, next))"), "Frontmatter edits must update the Markdown document.");
+expect(
+  app.includes("changeMarkdown(writeFrontmatter(document.markdown, next))")
+    || app.includes("changeMarkdown(writeFrontmatter(documentRef.current.markdown, next))"),
+  "Frontmatter edits must update the Markdown document."
+);
 expect(frontmatterSource.includes("function tagsField(value: unknown): string[]"), "Frontmatter tags must be normalized from unknown YAML values.");
 expect(frontmatterSource.includes("typeof value === \"string\" ? value.split(\",\") : []"), "Frontmatter tags must support comma-separated string metadata.");
 expect(frontmatterSource.includes("function stringField(value: unknown): string"), "Frontmatter string fields must normalize unknown YAML values.");

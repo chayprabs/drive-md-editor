@@ -115,7 +115,7 @@ async function hydrateMathAndDiagrams(
   onHydrationError: (failure: unknown) => void,
   isCurrentHydration: () => boolean
 ): Promise<void> {
-  await hydrateCode(host, onHydrationError, isCurrentHydration);
+  await hydrateCode(host, theme, onHydrationError, isCurrentHydration);
   if (!isCurrentHydration()) return;
   const mathNodes = [...host.querySelectorAll<HTMLElement>("code.language-math, code.language-katex")];
   if (mathNodes.length > 0) {
@@ -172,12 +172,17 @@ function mermaidTheme(theme: ThemeName): "dark" | "default" | "forest" | "neutra
 
 async function hydrateCode(
   host: HTMLElement,
+  theme: ThemeName,
   onHydrationError: (failure: unknown) => void,
   isCurrentHydration: () => boolean
 ): Promise<void> {
   const codeNodes = [...host.querySelectorAll<HTMLElement>("pre code")];
   if (codeNodes.length === 0) return;
-  await import("highlight.js/styles/github-dark.css");
+  if (theme === "light" || theme === "solarized") {
+    await import("highlight.js/styles/github.css");
+  } else {
+    await import("highlight.js/styles/github-dark.css");
+  }
   const hljs = await import("./highlight-languages");
   if (!isCurrentHydration()) return;
   for (const node of codeNodes) {

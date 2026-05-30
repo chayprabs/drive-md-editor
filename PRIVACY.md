@@ -32,4 +32,4 @@ You can revoke MarkDrive's Google account access from your Google Account permis
 
 ## Contact
 
-For privacy questions or support, use the project repository or Chrome Web Store support channel.
+For privacy questions or support, open an issue at [github.com/chayprabs/drive-md-editor](https://github.com/chayprabs/drive-md-editor/issues) or use the Chrome Web Store support channel when published.
