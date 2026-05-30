@@ -2,7 +2,7 @@ import type { AutosaveInterval, MarkDriveSettings, ThemeName } from "./types";
 import { cleanDriveId } from "./drive-url";
 
 export const defaultSettings: MarkDriveSettings = {
-  theme: "dark",
+  theme: "light",
   autosaveInterval: 5000,
   vimMode: false,
   softWrap: true,

@@ -20,7 +20,10 @@ expect(rootBlock?.includes("--bg: #0d1117"), "Dark theme must use #0d1117 backgr
 expect(rootBlock?.includes("--accent: #2dd4bf"), "Dark theme must use #2DD4BF accent.");
 
 expect(css.includes("transition: background 200ms ease, color 200ms ease"), "Theme changes must transition background and text color over 200ms.");
-expect(css.includes("grid-template-rows: 40px auto 1fr 28px"), "App shell must reserve a 40px toolbar row.");
+expect(css.includes("grid-template-rows: 48px auto 40px auto 1fr 28px 40px"), "App shell must reserve site chrome, toolbar, workspace, status, and footer rows.");
+expect(css.includes(".site-topbar") && css.includes("height: 48px"), "Site topbar must be 48px tall.");
+expect(css.includes(".seo-bar"), "SEO summary bar must exist.");
+expect(css.includes(".site-footer") && css.includes("height: 40px"), "Site footer must be 40px tall.");
 expect(extractBlock(".toolbar")?.includes("height: 40px"), "Toolbar must be 40px tall.");
 expect(extractBlock(".toolbar button,\n.rail button,\n.file-row > button:last-child")?.includes("width: 28px"), "Toolbar icon buttons must be 28px wide.");
 expect(extractBlock(".toolbar button,\n.rail button,\n.file-row > button:last-child")?.includes("height: 28px"), "Toolbar icon buttons must be 28px tall.");

@@ -210,7 +210,11 @@ Stack: TypeScript, React 19, Vite, `@crxjs/vite-plugin`, CodeMirror 6, markdown-
 
 MarkDrive sends file content and images to **Google Drive APIs** only when you open, save, create, upload, rename, or trash. Settings, recent files, and offline drafts stay in **local Chrome extension storage**. No ads, no analytics on document content.
 
-See [PRIVACY.md](./PRIVACY.md).
+See [PRIVACY.md](./PRIVACY.md) (also available at `/privacy.html` in development builds). Terms: [TERMS.md](./TERMS.md) and `/terms.html`.
+
+## License
+
+MarkDrive is released under the [MIT License](./LICENSE).
 
 ---
 

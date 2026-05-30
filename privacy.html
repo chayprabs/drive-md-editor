@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="index, follow" />
+    <title>Privacy Policy — MarkDrive</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png" />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #fafafa;
+        --text: #111827;
+        --muted: #64748b;
+        --border: #e2e8f0;
+        --accent: #0d9488;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font: 16px/1.65 system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 48px 24px 80px;
+      }
+      h1 {
+        font-size: 1.75rem;
+        margin: 0 0 8px;
+      }
+      .back {
+        display: inline-block;
+        margin-bottom: 24px;
+        color: var(--accent);
+        text-decoration: none;
+      }
+      .back:hover {
+        text-decoration: underline;
+      }
+      h2 {
+        margin-top: 28px;
+        font-size: 1.1rem;
+      }
+      p,
+      li {
+        color: var(--text);
+      }
+      .muted {
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="back" href="/">← Back to MarkDrive</a>
+      <h1>Privacy Policy</h1>
+      <p class="muted">Effective date: May 30, 2026</p>
+      <p>
+        MarkDrive is a Chrome extension for editing Markdown files in Google Drive. This policy describes what data the
+        extension handles and how it is used.
+      </p>
+      <h2>Data MarkDrive handles</h2>
+      <ul>
+        <li>Markdown and text files you open or save through Google Drive.</li>
+        <li>File metadata (names, folders, modified times) and recent files you open in MarkDrive.</li>
+        <li>Images you paste or upload to a Drive folder when you choose to insert them.</li>
+        <li>Local settings (theme, autosave, Vim mode, onboarding) stored in Chrome extension storage.</li>
+        <li>Offline save drafts queued locally until sync succeeds.</li>
+      </ul>
+      <h2>How data is used</h2>
+      <p>
+        File content is sent to Google Drive APIs only when you request an action: open, save, create, rename, trash, or
+        upload. MarkDrive does not sell data, serve ads, or send document content to analytics services.
+      </p>
+      <h2>Your control</h2>
+      <p>
+        Revoke Google account access from your Google Account permissions page. Remove local data by uninstalling the
+        extension or clearing its storage in Chrome.
+      </p>
+      <h2>Contact</h2>
+      <p>
+        Privacy questions:
+        <a href="https://github.com/chayprabs/drive-md-editor/issues">GitHub issues</a>.
+      </p>
+    </main>
+  </body>
+</html>

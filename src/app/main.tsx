@@ -104,7 +104,7 @@ function App(): React.ReactElement {
   const [conflict, setConflict] = useState<SaveConflict | null>(null);
   const [query, setQuery] = useState("");
   const [recents, setRecents] = useState<RecentFile[]>([]);
-  const [showEmptyState, setShowEmptyState] = useState(() => readQueryParam("fileId") === null);
+  const [showEmptyState, setShowEmptyState] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [browserFolderId, setBrowserFolderId] = useState<string | null>(() => readQueryParam("folderId"));
   const [driveIssue, setDriveIssue] = useState<DriveIssue | null>(null);

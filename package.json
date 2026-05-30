@@ -2,6 +2,15 @@
   "name": "markdrive",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chayprabs/drive-md-editor.git"
+  },
+  "homepage": "https://github.com/chayprabs/drive-md-editor#readme",
+  "bugs": {
+    "url": "https://github.com/chayprabs/drive-md-editor/issues"
+  },
   "description": "Edit, preview, and save .md files directly in Google Drive.",
   "type": "module",
   "scripts": {

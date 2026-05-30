@@ -13,7 +13,9 @@ export default defineConfig({
     rollupOptions: {
       input: {
         app: resolve(__dirname, "index.html"),
-        options: resolve(__dirname, "options.html")
+        options: resolve(__dirname, "options.html"),
+        privacy: resolve(__dirname, "privacy.html"),
+        terms: resolve(__dirname, "terms.html")
       },
       output: {
         manualChunks(id) {

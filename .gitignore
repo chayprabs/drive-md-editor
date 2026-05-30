@@ -3,4 +3,10 @@ dist/
 .env
 .env.*
 *.log
+.DS_Store
+Thumbs.db
 output/
+release/live-drive-verification.json
+*.local
+.vscode/
+!.vscode/extensions.json
