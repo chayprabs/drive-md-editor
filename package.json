@@ -2,15 +2,6 @@
   "name": "markdrive",
   "version": "1.0.0",
   "private": true,
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/chayprabs/drive-md-editor.git"
-  },
-  "homepage": "https://github.com/chayprabs/drive-md-editor#readme",
-  "bugs": {
-    "url": "https://github.com/chayprabs/drive-md-editor/issues"
-  },
   "description": "Edit, preview, and save .md files directly in Google Drive.",
   "type": "module",
   "scripts": {
@@ -46,7 +37,8 @@
     "lint:store": "tsx scripts/validate-store-invariants.ts",
     "lint:docs": "tsx scripts/validate-docs.ts",
     "lint:git": "tsx scripts/validate-git-history.ts",
-    "lint:oauth": "tsx scripts/validate-oauth.ts"
+    "lint:oauth": "tsx scripts/validate-oauth.ts",
+    "package:extension": "pnpm build && node -e \"const fs=require('fs');const path=require('path');const {execSync}=require('child_process');const out='markdrive-extension.zip';if(fs.existsSync(out))fs.unlinkSync(out);execSync('zip -r '+out+' dist -x dist/.DS_Store',{stdio:'inherit'});console.log('Created',out);\""
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.1",

@@ -202,6 +202,10 @@ Stack: TypeScript, React 19, Vite, `@crxjs/vite-plugin`, CodeMirror 6, markdown-
 | [docs/file-type-support.md](./docs/file-type-support.md) | Supported extensions and testing |
 | [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md) | Pre-store release checklist |
 | [PRIVACY.md](./PRIVACY.md) | Privacy policy source |
+| [TERMS.md](./TERMS.md) | Terms of service |
+| [LICENSE](./LICENSE) | MIT license |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Contributor guide |
+| [SECURITY.md](./SECURITY.md) | Security reporting |
 | [STORE_LISTING.md](./STORE_LISTING.md) | Chrome Web Store listing copy |
 
 ---

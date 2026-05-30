@@ -1,6 +1,6 @@
 # MarkDrive Privacy Policy
 
-Effective date: May 19, 2026
+Effective date: May 30, 2026
 
 MarkDrive is a Chrome extension for editing Markdown files in Google Drive.
 
@@ -32,4 +32,4 @@ You can revoke MarkDrive's Google account access from your Google Account permis
 
 ## Contact
 
-For privacy questions or support, open an issue at [github.com/chayprabs/drive-md-editor](https://github.com/chayprabs/drive-md-editor/issues) or use the Chrome Web Store support channel when published.
+For privacy questions or support, use the project repository or Chrome Web Store support channel.

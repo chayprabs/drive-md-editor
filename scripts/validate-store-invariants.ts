@@ -36,7 +36,7 @@ for (const hostPermission of ["https://www.googleapis.com/*", "https://drive.goo
 
 for (const text of [
   "# MarkDrive Privacy Policy",
-  "Effective date: May 19, 2026",
+  "Effective date: May 30, 2026",
   "Markdown files you open or save through Google Drive",
   "File metadata needed to show names, folders, modified times, and recent files",
   "Images you paste or drop into the editor",
